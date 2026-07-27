@@ -18,126 +18,34 @@ Schnittstelle für Menschen und LLMs. Keine Server, keine Kosten, nichts zu wart
   jeder Speichervorgang ist zusätzlich ein echter Git-Commit
 - 🔀 Konflikt-sicher: gleichzeitige Änderungen von zwei Geräten werden gemerged
 
-## Wie es funktioniert
+## Wie es funktioniert (server-autoritativ)
+
+Normale Web-App auf **Cloudflare** — nichts Verschlüsseltes im Browser:
 
 ```
-data/ledger.enc   ←  Daten (AES-256-GCM mit dem zufälligen Datenschlüssel DEK)
-data/keys.enc     ←  Nutzer + Passwörter: jedes Passwort „packt" denselben DEK ein
-index.html        ←  Dashboard: entschlüsselt IM BROWSER, Login pro Nutzer
-ledger.py         ←  CLI: balance / show / add / rm / json … (nutzt den DEK aus $LEDGER_DEK oder Keychain)
+Cloudflare Pages      →  statische App (index.html …)
+Pages Functions       →  functions/api/…  = die API (Login, Sessions, CRUD, Validierung)
+Cloudflare D1 (SQLite)→  die Datenbank (users, entries, sessions, settings, history, receipts)
 ```
 
-### Zwei Nutzer, eigene Passwörter, Admin-Wiederherstellung
+- **Login:** Nutzer + Passwort → Server prüft (PBKDF2-SHA256, 4× verkettet ≈ 400k)
+  → Session-Token als **HttpOnly-Secure-Cookie** (30 Tage). Kein Token-Handling im Client.
+- **Server-autoritativ:** Jede Änderung geht über die API, wird serverseitig validiert
+  (Kategorie/Zahler/Datum/Pfand-Regel), protokolliert (history) und in D1 gespeichert.
+- **Autorisierung:** Zahlungen bestätigt nur der Empfänger; Passwörter anderer setzt nur der Admin (Kawa).
+- **Sicher:** HTTPS erzwungen, Passwörter nur gehasht, Sessions serverseitig, Eingaben validiert.
 
-- Die Daten sind mit einem **Datenschlüssel (DEK)** verschlüsselt, nicht direkt mit
-  einem Passwort. In `keys.enc` liegt der DEK je einmal **mit dem Passwort jedes
-  Nutzers verschlüsselt** (PBKDF2-SHA256, 310k → AES-GCM-Wrapping).
-- **Kawa = Admin**, Zeynel = normaler Nutzer. Jeder setzt sein eigenes Passwort
-  (⚙︎ → „Passwort & Nutzer"). Beim Login wird automatisch erkannt, wer man ist.
-- **Passwort vergessen?** Der **Admin** kann in den Einstellungen ein neues Passwort
-  für den anderen setzen (er hält den DEK). Für den Totalverlust gibt es einen
-  **Wiederherstellungscode** (= der DEK als base32): auf dem Login-Screen
-  „Passwort vergessen?" → Code + neues Passwort. Den Code zeigt der Admin unter
-  ⚙︎ an und bewahrt ihn offline sicher auf.
-- Passwörter selbst sind **nicht** wiederherstellbar (nur der Zugang). Wer keinen
-  Code und kein Passwort mehr hat, kommt nicht an die Daten — das ist der Preis
-  echter Verschlüsselung.
+Live: **https://schulden-kz.pages.dev** — öffnen, Nutzer wählen, Passwort, fertig.
+Free-Tier (Pages + D1) → **0 €/Monat**.
 
-- **Ende-zu-Ende verschlüsselt:** Im Repo und beim Hoster liegt nur Ciphertext.
-  Das Repo kann deshalb sogar öffentlich sein; privat ist trotzdem empfohlen.
-- **Fail-safe:** Jede Änderung ist ein Git-Commit (Historie = Undo). Das CLI legt
-  zusätzlich lokale Backups unter `.backups/` an und validiert vor jedem Schreiben.
-- **Zwei Schreibwege, ein Format:** Browser (verschlüsselt lokal, committet per
-  GitHub-API) und CLI (entschlüsselt lokal, committet per `git push`).
-
-## Hosting — alles auf Cloudflare (kostenlos)
-
-**Live: https://schulden-kz.pages.dev** — öffnen, Passwort eingeben, fertig.
-
-Eine echte Web-App auf einer Domain: Cloudflare **Pages** (statische App) +
-**Functions** (`functions/api/…` = Speicher-API) + **KV** (Datenspeicher).
-Free-Tier: 100k Anfragen/Tag → für zwei Personen dauerhaft **0 €/Monat**. Kein
-Token, kein CORS — Login läuft über das Passwort.
-
-**Erneut deployen** (nach App-Änderungen):
-```bash
-cd ~/schulden-tracker && ./deploy.sh        # nur die App neu hochladen
-SEED=1 ./deploy.sh                           # zusätzlich Daten/Auth in KV neu setzen (Reset)
-```
-`deploy.sh` staged automatisch nur die App-Dateien (nie `data/`) und deployt.
-KV-Namespace-ID und Projektname stehen im Skript.
-
-Sicherheit: Der Login-Nachweis ist `hex(SHA-256(DEK))`; der Server speichert nur
-dessen Hash. `keys` (PBKDF2-geschützt) ist ohne Auth lesbar, Ledger und Belege nur
-mit Login. Alles bleibt Ende-zu-Ende-verschlüsselt — der Server sieht nur Ciphertext.
-
----
-
-### Alternative: GitHub Pages (bereits eingerichtet)
-
-Live: **https://kacikgoez.github.io/schulden-tracker/**
-
-Aufbau (zwei Repos):
-- **schulden-tracker** (öffentlich) — die App, via GitHub Pages gehostet. Enthält
-  **keine** Daten.
-- **schulden-tracker-data** (privat) — die verschlüsselten Daten (`data/keys.enc`,
-  `data/ledger.enc`, `data/receipts/`). Niemand außer den Token-Inhabern kann sie laden.
-
-### Einmalig pro Gerät: Zugriffs-Token
-
-Da die Daten im privaten Repo liegen, braucht jedes Gerät einen Token (App + CLI).
-
-1. **github.com/settings/personal-access-tokens** → „Generate new token" → *Fine-grained*.
-2. *Resource owner* = kacikgoez, *Repository access* → „Only select repositories" →
-   **schulden-tracker-data**.
-3. *Permissions* → *Repository permissions* → **Contents: Read and write**.
-4. Token erzeugen, kopieren.
-5. In der App auf dem Login-Screen „Sync einrichten" → Repo (vorausgefüllt) + Token
-   einfügen → „Speichern & laden". Danach lädt und speichert die App automatisch,
-   keine Downloads mehr.
-
-Lokal testen: `python3 -m http.server -d ~/schulden-tracker 8080` → http://localhost:8080
-
-### CLI ⇄ privates Daten-Repo
-
-`~/schulden-tracker/data` ist ein Symlink auf `~/schulden-tracker-data/data`. Die CLI
-schreibt also direkt in das Daten-Repo. Änderungen anschließend pushen:
+## Deploy / Entwicklung
 
 ```bash
-git -C ~/schulden-tracker-data commit -am "ledger: …" && git -C ~/schulden-tracker-data push
+npx wrangler login                    # einmalig
+./deploy.sh                           # App + Functions nach Cloudflare Pages
+npx wrangler d1 execute schulden --remote --file schema.sql   # Schema (einmalig)
+node migrate.js > migrate.sql && npx wrangler d1 execute schulden --remote --file migrate.sql  # Daten (einmalig)
 ```
-
-## Passwörter & Wiederherstellungscode
-
-- Jeder Nutzer hat sein eigenes Passwort (in der App unter ⚙︎ änderbar). Passwörter
-  liegen nur als DEK-Wrapping in `keys.enc`, nie im Klartext.
-- Der **Wiederherstellungscode** (= DEK, base32) liegt für die CLI im
-  macOS-Schlüsselbund: `security find-generic-password -s schulden-tracker-dek -w`.
-  Offline sicher aufbewahren; er entsperrt alles und setzt bei Bedarf Passwörter neu.
-- Neues Passwort für den anderen: Admin (Kawa) in der App unter ⚙︎ → „Passwort & Nutzer".
-
-## Schreiben aus dem Browser (optional)
-
-Im Dashboard unter ⚙︎: `owner/repo`, Branch und ein **fine-grained Personal Access
-Token** (nur dieses Repo, nur „Contents: Read and write"). Damit committet die Seite
-Änderungen direkt. Ohne Token bleibt sie lesend und bietet die geänderte Datei als
-Download an. Der GitHub-Token wird auf dem Gerät **mit dem DEK verschlüsselt**
-abgelegt (nie im Repo).
-
-## KI für Beleg-Scan & Diktat
-
-Unter ⚙︎ → „KI" einen Anbieter wählen:
-
-| Anbieter | Kosten | Schlüssel |
-|---|---|---|
-| **OpenRouter → Qwen3-VL 235B** (Standard) — Flaggschiff-OCR, chinesisches Open-Weight-Modell | $0,20/M in · $0,88/M out ≈ 0,1–0,2 Cent/Beleg | openrouter.ai → Keys |
-| Google Gemini (`gemini-2.5-pro` o. ä.) | Free-Tier/Cents | aistudio.google.com |
-| OpenAI (`gpt-4o-mini`) | ~0,1 Cent/Beleg | platform.openai.com |
-| OpenAI-kompatibel (GLM-4.6V bei z.ai, DashScope …) | teils gratis | Base-URL + Key |
-
-Das Diktat nutzt die kostenlose Browser-Spracherkennung (de-DE); die KI parst nur
-den erkannten Text. Belege werden **vor** dem Upload clientseitig verschlüsselt —
-der KI-Anbieter sieht das Foto zur Analyse, das Repo nur Ciphertext.
 
 ## Regeln des Kassenbuchs
 

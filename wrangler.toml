@@ -1,8 +1,8 @@
-name = "schulden-tracker"
+name = "schulden-kz"
 compatibility_date = "2026-01-01"
 pages_build_output_dir = "."
 
-# KV-Binding (die namespace-id trägt deploy.sh automatisch ein)
-[[kv_namespaces]]
-binding = "DATA"
-id = "01b1366060b64ccf8cdb19b48d770070"
+[[d1_databases]]
+binding = "schulden"
+database_name = "schulden"
+database_id = "75325642-343e-4093-9124-40c52b91a1d7"

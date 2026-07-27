@@ -1,5 +1,5 @@
 /* Service Worker: App-Shell aus dem Cache, Daten immer frisch (network-first). */
-const VERSION = "st-v2";
+const VERSION = "st-v3";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {

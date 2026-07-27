@@ -287,48 +287,17 @@ input[type=checkbox]{accent-color:var(--accent)}
   <div id="lock" class="card">
     <div style="font-size:34px">🔐</div>
     <h2 style="margin:8px 0 2px;font-size:18px">Schulden-Tracker</h2>
-    <p class="note">Ende-zu-Ende verschlüsselt. Dein Passwort:</p>
+    <p class="note">Anmelden:</p>
+    <label class="note" style="text-align:left;display:block;margin-bottom:6px">Wer bist du?</label>
+    <select id="loginuser" style="width:100%;background:var(--fill);border:none;border-radius:14px;padding:12px;font-size:16px;margin-bottom:10px">
+      <option>Kawa</option><option>Zeynel</option></select>
     <input id="pw" type="password" autocomplete="current-password" placeholder="Passwort">
-    <label class="note" style="display:flex;gap:6px;justify-content:center;align-items:center">
-      <input type="checkbox" id="remember" style="width:auto"> auf diesem Gerät merken</label>
     <p id="lockerr" class="err"></p>
-    <button class="btn primary" id="unlock" style="width:100%">Entsperren</button>
-    <p class="note" style="margin-top:12px"><a href="#" id="recoverlink">Passwort vergessen? Wiederherstellungscode</a></p>
+    <button class="btn primary" id="unlock" style="width:100%">Anmelden</button>
     <p class="note" id="srcinfo" style="margin-top:8px"></p>
     <input type="file" id="filepick" accept=".enc,.json" style="display:none">
   </div>
 </div>
-
-<dialog id="syncdlg">
-  <div class="sheet-head"><h3>Sync einrichten</h3>
-    <button class="xclose" id="syncx" aria-label="Schließen">✕</button></div>
-  <p class="note">Einmal pro Gerät: Zugriffs-Token für das private Daten-Repo eintragen.
-    Token erstellen auf <b>github.com/settings/personal-access-tokens</b> → „Fine-grained",
-    nur dieses Repo, Berechtigung <b>Contents: Read and write</b>.</p>
-  <label>Daten-Repo (owner/name)</label>
-  <input id="syncrepo" placeholder="kacikgoez/schulden-tracker-data" autocomplete="off">
-  <label>Zugriffs-Token</label>
-  <input id="synctoken" type="password" placeholder="github_pat_…" autocomplete="off">
-  <p id="syncerr" class="err"></p>
-  <div class="foot"><button class="btn" id="synccancel">Abbrechen</button>
-    <button class="btn primary" id="syncsave">Speichern & laden</button></div>
-</dialog>
-
-<dialog id="recoverdlg">
-  <div class="sheet-head"><h3>Wiederherstellung</h3>
-    <button class="xclose" id="recx" aria-label="Schließen">✕</button></div>
-  <p class="note">Gib den Wiederherstellungscode ein (vom Admin). Danach kannst du ein neues
-    Passwort für dich setzen.</p>
-  <label>Wiederherstellungscode</label>
-  <input id="reccode" placeholder="XXXXX-XXXXX-…" autocomplete="off">
-  <label>Wer bist du?</label>
-  <select id="recuser"><option>Kawa</option><option>Zeynel</option></select>
-  <label>Neues Passwort</label>
-  <input id="recnew" type="password" placeholder="neues Passwort">
-  <p id="recerr" class="err"></p>
-  <div class="foot"><button class="btn" id="reccancel">Abbrechen</button>
-    <button class="btn primary" id="recgo">Zugang wiederherstellen</button></div>
-</dialog>
 
 <div class="wrap" id="app" style="display:none">
   <header>
@@ -572,18 +541,7 @@ input[type=checkbox]{accent-color:var(--accent)}
     <button class="btn" id="notifbtn" type="button">Benachrichtigungen erlauben</button>
   </div>
 
-  <div id="cloudinfo" style="display:none">
-    <h3 class="sect">Sync</h3>
-    <p class="note">☁︎ Cloud-Sync aktiv — Speichern läuft automatisch, nichts einzurichten.</p>
-  </div>
-  <div id="ghsync">
-  <h3 class="sect">Sync (privates Daten-Repo)</h3>
-  <p class="note">Fine-grained Token, nur das Daten-Repo, „Contents: Read & Write".
-    Pro Gerät einmal. Ohne Token: Änderungen als Datei-Download.</p>
-  <label>Daten-Repo (owner/name)</label><input id="cfgrepo" placeholder="kacikgoez/schulden-tracker-data">
-  <label>Branch</label><input id="cfgbranch" placeholder="main">
-  <label>Token</label><input id="cfgtoken" type="password" placeholder="github_pat_…">
-  </div>
+  <button class="btn" id="logoutbtn" style="width:100%;margin-top:14px">Abmelden</button>
 
   <h3 class="sect">Bankverbindungen (geteilt, für GiroCode)</h3>
   <label>IBAN Kawa</label><input id="cfgibanK" placeholder="DE…" autocomplete="off">
@@ -747,64 +705,8 @@ return {svg:qrSVG, encode};
 
 <script>
 "use strict";
-/* ================= Krypto: DEK-Wrapping, Mehrbenutzer (kompatibel zu ledger.py v2) =================
-   Daten (ledger.enc, receipts, vault) sind mit einem zufälligen Datenschlüssel DEK verschlüsselt.
-   Jeder Nutzer hat ein eigenes Passwort, das den DEK in keys.enc „einpackt". Der
-   Wiederherstellungscode ist der DEK selbst (base32) — der Admin kann damit Passwörter neu setzen. */
-const ITER = 310000;
-const te = new TextEncoder(), td = new TextDecoder();
-const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-function b64e(buf){ const a = new Uint8Array(buf); let s = "";
-  for(let i=0;i<a.length;i+=0x8000) s += String.fromCharCode.apply(null, a.subarray(i,i+0x8000));
-  return btoa(s); }
-const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-function b32encode(bytes){ let bits=0,val=0,out=""; for(const b of bytes){val=(val<<8)|b;bits+=8;
-  while(bits>=5){out+=B32[(val>>(bits-5))&31];bits-=5;}} if(bits>0)out+=B32[(val<<(5-bits))&31]; return out; }
-function b32decode(s){ s=(s||"").toUpperCase().replace(/[^A-Z2-7]/g,""); let bits=0,val=0,out=[];
-  for(const ch of s){const i=B32.indexOf(ch); if(i<0)continue; val=(val<<5)|i; bits+=5;
-    if(bits>=8){out.push((val>>(bits-8))&0xff); bits-=8;}} return new Uint8Array(out); }
-const fmtCode = s => s.replace(/(.{5})/g,"$1-").replace(/-$/,"");
-
-let DEK = null;   // CryptoKey (AES-GCM) — im Speicher, nie persistiert
-let DEKRAW = null; // Uint8Array(32) für den Wiederherstellungscode / Re-Wrap
-const importDEK = raw => crypto.subtle.importKey("raw", raw, {name:"AES-GCM"}, false, ["encrypt","decrypt"]);
-async function encWithDEK(bytes){
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, DEK, bytes);
-  return JSON.stringify({v:2, iv:b64e(iv), ct:b64e(ct)});
-}
-const decWithDEK = env => crypto.subtle.decrypt({name:"AES-GCM", iv:b64d(env.iv)}, DEK, b64d(env.ct));
-const decJSON = async env => JSON.parse(td.decode(await decWithDEK(env)));
-const encJSON = obj => encWithDEK(te.encode(JSON.stringify(obj)));
-async function deriveKEK(pw, salt, usages){
-  const base = await crypto.subtle.importKey("raw", te.encode(pw), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({name:"PBKDF2", salt, iterations:ITER, hash:"SHA-256"},
-    base, {name:"AES-GCM", length:256}, false, usages);
-}
-let KEYS = null, KEYSHA = null;   // keys.enc-Inhalt + GitHub-SHA
-async function setDEK(raw){ DEKRAW = raw; DEK = await importDEK(raw);
-  await decWithDEK(KEYS.check); }   // wirft, wenn der DEK nicht zu keys.enc passt
-async function unlockWithPassword(pw){
-  for(const u of KEYS.users){
-    try{
-      const kek = await deriveKEK(pw, b64d(u.salt), ["decrypt"]);
-      const raw = new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM", iv:b64d(u.iv)}, kek, b64d(u.wrapped)));
-      await setDEK(raw);
-      return u;
-    }catch(_e){ DEK=null; DEKRAW=null; }
-  }
-  return null;
-}
-async function wrapForUser(pw){
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const kek = await deriveKEK(pw, salt, ["encrypt"]);
-  const wrapped = await crypto.subtle.encrypt({name:"AES-GCM", iv}, kek, DEKRAW);
-  return {salt:b64e(salt), iter:ITER, iv:b64e(iv), wrapped:b64e(wrapped)};
-}
-
-/* ================= Zustand & Helfer ================= */
-let DATA=null, CUR=null, FILESHA=null, EDITING=null, SCANIMG=null, SCANRESULTS=null;
+/* ================= Server-API (Cloudflare D1) ================= */
+let DATA=null, ME=null, USERS=[], CUR=null, EDITING=null, SCANIMG=null, SCANRESULTS=null;
 const RATES = {Einweg:.25, Mehrweg:.15, Bierflasche:.08};
 const eur = x => x.toLocaleString("de-DE",{style:"currency",currency:"EUR"});
 const $ = id => document.getElementById(id);
@@ -814,38 +716,27 @@ const owedOf = e => e.split5050 ? amount(e)/2 : amount(e);
 const monthOf = e => e.date.slice(0,7);
 const MN = ["Jan","Feb","Mrz","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 const mLabel = m => MN[+m.slice(5,7)-1] + " " + m.slice(0,4);
-const nowIso = () => new Date().toISOString().slice(0,19)+"Z";
-const newId = p => p + crypto.getRandomValues(new Uint32Array(1))[0].toString(16).padStart(8,"0").slice(0,8);
-const actor = () => localStorage.actor || "Kawa";
-
-/* Geräte-Vault: Geräte-Secrets (GitHub-Token) mit dem DEK verschlüsselt in localStorage */
-let VAULT = {ghtoken:"", aikey:""};
-async function loadVault(){
-  if(!localStorage.vault) return;
-  try{ VAULT = await decJSON(JSON.parse(localStorage.vault)); }catch(_e){}
-}
-async function saveVault(){ localStorage.vault = await encJSON(VAULT); }
-const ghTok = () => localStorage.ghtoken || "";
-/* Cloudflare-Backend (gleiche Domain): API unter ./api, Auth = hex(SHA-256(DEK)) */
-let API = null;
-async function authHex(){
-  const h = await crypto.subtle.digest("SHA-256", DEKRAW);
-  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("");
-}
-async function apiGet(path, auth){
-  const h = auth ? {"X-Auth": await authHex()} : {};
-  const r = await fetch(API+path, {headers:h, cache:"no-store"});
-  if(!r.ok) throw new Error("API "+r.status);
-  return r.json();
-}
-async function apiSend(path, method, bodyStr){
-  const r = await fetch(API+path, {method, headers:{"X-Auth": await authHex(), "content-type":"application/json"}, body:bodyStr});
-  if(!r.ok) throw new Error("API "+r.status);
-  return r.json();
-}
-const cfg = () => ({repo:localStorage.repo||"kacikgoez/schulden-tracker-data", branch:localStorage.branch||"main",
-  prov:localStorage.prov||"openrouter", model:localStorage.model||"", base:localStorage.base||"",
+const actor = () => ME ? ME.name : "";
+const isAdmin = () => !!(ME && ME.is_admin);
+const cfg = () => ({prov:localStorage.prov||"openrouter", model:localStorage.model||"", base:localStorage.base||"",
   dictate:localStorage.dictate||"browser", amodel:localStorage.amodel||""});
+
+async function api(path, method, bodyObj){
+  const opt = {method:method||"GET", credentials:"same-origin"};
+  if(bodyObj){ opt.headers={"content-type":"application/json"}; opt.body=JSON.stringify(bodyObj); }
+  const r = await fetch("api"+path, opt);
+  let j={}; try{ j = await r.json(); }catch(_e){}
+  if(r.status===401 && path!=="/login"){ showLock(); throw new Error("Bitte anmelden"); }
+  if(!r.ok) throw new Error(j.error || ("HTTP "+r.status));
+  return j;
+}
+async function loadState(){
+  const s = await api("/state");
+  ME = s.me; USERS = s.users || [];
+  DATA = {entries:s.entries||[], history:s.history||[], settings:s.settings||{},
+    categories:s.categories||[], pfand_rates:s.pfand_rates||RATES};
+}
+async function reload(){ await loadState(); render(); }
 
 function monthsList(){
   const s = new Set(DATA.entries.map(monthOf));
@@ -856,144 +747,6 @@ const isPending = e => e.pay_status === "pending";
 function netOf(list){ let k=0,z=0;
   for(const e of list){ if(isPending(e)) continue; if(e.payer==="Kawa") k+=owedOf(e); else z+=owedOf(e); }
   return k-z; }
-
-function logEvent(action, entryId, before, after){
-  DATA.history = DATA.history || [];
-  DATA.history.push({id:newId("h"), ts:nowIso(), actor:actor(), action, entry:entryId,
-    before: before?structuredClone(before):null, after: after?structuredClone(after):null});
-}
-
-/* ================= Laden / Speichern (GitHub = Datenbank) ================= */
-const ghHeaders = () => ({Authorization:"Bearer "+ghTok(), Accept:"application/vnd.github+json"});
-async function ghGet(path){
-  const c = cfg();
-  const r = await fetch(`https://api.github.com/repos/${c.repo}/contents/${path}?ref=${c.branch}`,
-    {headers: ghHeaders(), cache:"no-store"});
-  if(!r.ok) throw new Error("GitHub "+r.status);
-  return r.json();
-}
-async function ghPut(path, contentB64, message, sha){
-  const c = cfg();
-  const body = {message, branch:c.branch, content:contentB64};
-  if(sha) body.sha = sha;
-  return fetch(`https://api.github.com/repos/${c.repo}/contents/${path}`,
-    {method:"PUT", headers:ghHeaders(), body:JSON.stringify(body)});
-}
-
-/* Startdaten laden: keys.enc + ledger.enc aus dem privaten Daten-Repo (per API mit Token).
-   Fallback: gleiche Origin (lokal/dev), dann Datei-Auswahl. */
-async function loadBoot(){
-  // 1) Cloudflare-Backend (gleiche Domain)? keys.enc ist ohne Auth lesbar.
-  try{
-    const base = new URL("api", location.href).href.replace(/\/$/,"");
-    const r = await fetch(base+"/keys", {cache:"no-store"});
-    if(r.ok){
-      const k = await r.json();
-      if(k && k.users){ API = base; KEYS = k; $("srcinfo").textContent = "Cloud-Sync aktiv"; return true; }
-    }
-  }catch(_e){}
-  const c = cfg();
-  if(c.repo && ghTok()){
-    try{
-      const jk = await ghGet("data/keys.enc");
-      KEYS = JSON.parse(td.decode(b64d(jk.content.replace(/\n/g,"")))); KEYSHA = jk.sha;
-      const jl = await ghGet("data/ledger.enc");
-      window._env = JSON.parse(td.decode(b64d(jl.content.replace(/\n/g,"")))); FILESHA = jl.sha;
-      $("srcinfo").textContent = "Sync: " + c.repo;
-      return true;
-    }catch(e){ $("srcinfo").textContent = "Sync-Fehler (" + (e.message||"") + ")"; }
-  }
-  try{
-    const rk = await fetch("data/keys.enc", {cache:"no-store"});
-    if(rk.ok) KEYS = await rk.json();
-    const rl = await fetch("data/ledger.enc", {cache:"no-store"});
-    if(rl.ok) window._env = await rl.json();
-    if(KEYS && window._env){ $("srcinfo").textContent = "Quelle: lokale Dateien"; return true; }
-  }catch(_e){}
-  if(!ghTok()){
-    $("srcinfo").innerHTML = "<a href='#' id='syncsetuplink'>Sync einrichten (Zugriffs-Token eintragen)</a>";
-    setTimeout(()=>{ const l=$("syncsetuplink"); if(l) l.onclick = ev => { ev.preventDefault(); openSyncSetup(); }; },0);
-    return false;
-  }
-  return false;
-}
-function openSyncSetup(){
-  $("syncrepo").value = cfg().repo; $("synctoken").value = ghTok();
-  $("syncdlg").showModal();
-}
-async function ghGetSha(path){ try{ return (await ghGet(path)).sha; }catch(_e){ return null; } }
-
-/* Merge bei Konflikt: Einträge nach id vereinigen, Löschungen respektieren, Historie vereinigen */
-function mergeData(local, remote){
-  const del = new Set([...(local.history||[]), ...(remote.history||[])]
-    .filter(h=>h.action==="delete").map(h=>h.entry));
-  const revived = new Set([...(local.history||[]), ...(remote.history||[])]
-    .filter(h=>h.action==="revert" && h.after).map(h=>h.after.id));
-  const byId = new Map();
-  for(const e of [...remote.entries, ...local.entries]) byId.set(e.id, {...byId.get(e.id), ...e});
-  local.entries = [...byId.values()].filter(e=>!del.has(e.id) || revived.has(e.id));
-  const hIds = new Set();
-  local.history = [...(remote.history||[]), ...(local.history||[])]
-    .filter(h=>hIds.has(h.id)?false:hIds.add(h.id)).sort((a,b)=>a.ts.localeCompare(b.ts));
-  return local;
-}
-
-async function persist(msg){
-  if(API){
-    try{ await apiSend("/ledger", "PUT", await encJSON(DATA));
-      $("syncstate").textContent = "✓ gespeichert"; }
-    catch(e){ $("syncstate").textContent = "⚠︎ Speichern fehlgeschlagen (" + e.message + ")"; }
-    return;
-  }
-  const c = cfg();
-  if(c.repo && ghTok()){
-    for(let attempt=0; attempt<2; attempt++){
-      const blob = await encJSON(DATA);
-      const r = await ghPut("data/ledger.enc", b64e(te.encode(blob)), `[${actor()}] ${msg}`, FILESHA);
-      if(r.ok){ FILESHA = (await r.json()).content.sha;
-        $("syncstate").textContent = "✓ gespeichert (Git-Commit)"; return; }
-      if(r.status===409 || r.status===422){
-        try{
-          const j = await ghGet("data/ledger.enc");
-          FILESHA = j.sha;
-          const remote = await decJSON(JSON.parse(td.decode(b64d(j.content.replace(/\n/g,"")))));
-          DATA = mergeData(DATA, remote);
-          render();
-          continue;
-        }catch(_e){}
-      }
-      $("syncstate").textContent = "⚠︎ Git-Fehler " + r.status;
-      return;
-    }
-    $("syncstate").textContent = "⚠︎ Konflikt — bitte Seite neu laden";
-  } else {
-    const blob = await encJSON(DATA);
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([blob], {type:"application/json"}));
-    a.download = "ledger.enc"; a.click();
-    $("syncstate").textContent = "Datei geladen — data/ledger.enc im Repo ersetzen (Sync: ⚙︎)";
-  }
-}
-/* keys.enc (Passwörter) speichern — nur bei Passwort-/Nutzeränderungen */
-async function persistKeys(msg){
-  const blob = JSON.stringify(KEYS);
-  if(API){
-    try{ await apiSend("/keys", "POST", blob); return true; }
-    catch(e){ $("syncstate").textContent = "⚠︎ keys speichern fehlgeschlagen (" + e.message + ")"; return false; }
-  }
-  const c = cfg();
-  if(c.repo && ghTok()){
-    if(!KEYSHA) KEYSHA = await ghGetSha("data/keys.enc");
-    const r = await ghPut("data/keys.enc", b64e(te.encode(blob)), `[${actor()}] ${msg}`, KEYSHA);
-    if(r.ok){ KEYSHA = (await r.json()).content.sha; return true; }
-    $("syncstate").textContent = "⚠︎ keys.enc-Fehler " + r.status; return false;
-  }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([blob], {type:"application/json"}));
-  a.download = "keys.enc"; a.click();
-  $("syncstate").textContent = "keys.enc geladen — im Repo unter data/ ersetzen";
-  return true;
-}
 
 /* ================= KI-Kosten-Tracking =================
    Kawa zahlt den API-Account — seine Nutzung wird nur protokolliert.
@@ -1011,44 +764,30 @@ function aiRate(model){
   for(const [k,i,o] of AIPRICES) if(m.includes(k)) return [i,o];
   return [0.5, 1.5]; // konservativer Default
 }
-function trackUsage(model, tin, tout){
+async function trackUsage(model, tin, tout){
   if(!DATA) return;
   const [ri, ro] = aiRate(model);
   const usd = (tin*ri + tout*ro) / 1e6;
-  (DATA.api_usage = DATA.api_usage || []).push(
-    {ts: nowIso(), actor: actor(), model, "in": tin, out: tout, usd: +usd.toFixed(6)});
-  if(actor() === "Zeynel" && syncApiEntry()){
-    render();
-    persist("KI-Nutzung Zeynel aktualisiert").catch(()=>{});
-  }
+  const arr = DATA.settings.api_usage = DATA.settings.api_usage || [];
+  arr.push({ts:new Date().toISOString().slice(0,19)+"Z", actor:actor(), model, usd:+usd.toFixed(6)});
+  try{ await api("/settings","POST",{api_usage:arr}); }catch(_e){}
+  if(actor()==="Zeynel") await syncApiEntry().catch(()=>{});
+  const el=$("aicost"); if(el) el.textContent = aiCostLine();
 }
-function syncApiEntry(){
+async function syncApiEntry(){
   const month = new Date().toISOString().slice(0,7);
-  const eur = Math.round((DATA.api_usage||[])
+  const eurAmt = Math.round((DATA.settings.api_usage||[])
     .filter(u=>u.actor==="Zeynel" && u.ts.startsWith(month))
     .reduce((s,u)=>s+u.usd,0) * USD2EUR * 100) / 100;
-  if(!DATA.categories.includes("KI-Nutzung")) DATA.categories.push("KI-Nutzung");
-  const id = "api-" + month;
-  let e = DATA.entries.find(x=>x.id===id);
-  if(eur < 0.01) return false;
-  if(!e){
-    e = {id, date: new Date().toISOString().slice(0,10), category: "KI-Nutzung",
-         description: "KI-API-Nutzung Zeynel (automatisch erfasst)", payer: "Kawa",
-         unit_price: eur, split5050: false, mt: nowIso()};
-    DATA.entries.push(e);
-    logEvent("add", id, null, e);
-    return true;
-  }
-  if(e.unit_price !== eur){
-    e.unit_price = eur; e.date = new Date().toISOString().slice(0,10); e.mt = nowIso();
-    return true;
-  }
-  return false;
+  if(eurAmt < 0.01) return;
+  await api("/entry","POST",{id:"api-"+month, date:new Date().toISOString().slice(0,10),
+    category:"KI-Nutzung", description:"KI-API-Nutzung Zeynel (automatisch erfasst)",
+    payer:"Kawa", unit_price:eurAmt, split5050:false});
 }
 function aiCostLine(){
   const month = new Date().toISOString().slice(0,7);
   const sums = {Kawa:0, Zeynel:0};
-  for(const u of DATA.api_usage||[])
+  for(const u of (DATA.settings.api_usage||[]))
     if(u.ts.startsWith(month)) sums[u.actor] = (sums[u.actor]||0) + u.usd;
   if(!sums.Kawa && !sums.Zeynel) return "";
   const f = x => (x*USD2EUR).toLocaleString("de-DE",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:3});
@@ -1058,7 +797,7 @@ function aiCostLine(){
 /* ================= KI-Anbieter ================= */
 /* Der KI-Schlüssel ist universell: Kawa hinterlegt ihn einmal, er liegt verschlüsselt
    im Datensatz und steht damit automatisch auf allen Geräten zur Verfügung. */
-const aiKey = () => (DATA && DATA.settings && DATA.settings.ai_key) || VAULT.aikey || "";
+const aiKey = () => (DATA && DATA.settings && DATA.settings.ai_key) || "";
 function aiConfigured(){ return !!aiKey(); }
 function extractionPrompt(instr){
   const today = new Date().toISOString().slice(0,10);
@@ -1194,45 +933,32 @@ $("propsave").onclick = async () => {
   if(!picks.length) return;
   $("propsave").disabled = true;
   let receiptId = null;
-  const c = cfg();
-  if(SCANIMG && (API || (c.repo && ghTok()))){
-    receiptId = newId("r");
-    $("scanstate").innerHTML = "<span class='spin'></span> Beleg wird verschlüsselt gespeichert …";
-    const enc = await encWithDEK(b64d(SCANIMG));
-    let okUp = false;
-    try{
-      if(API){ await apiSend(`/receipt/${receiptId}`, "PUT", enc); okUp = true; }
-      else { const r = await ghPut(`data/receipts/${receiptId}.enc`, b64e(te.encode(enc)), `[${actor()}] Beleg ${receiptId}`); okUp = r.ok; }
-    }catch(_e){ okUp = false; }
-    if(!okUp){ receiptId = null; $("scanstate").innerHTML = "<span class='err'>Beleg-Upload fehlgeschlagen — Einträge werden ohne Beleg gespeichert.</span>"; }
-  } else if(SCANIMG){
-    $("scanstate").textContent = "Hinweis: ohne Sync wird der Beleg nicht dauerhaft gespeichert.";
+  if(SCANIMG){
+    $("scanstate").innerHTML = "<span class='spin'></span> Beleg wird gespeichert …";
+    try{ const r = await api("/receipt", "POST", {data: SCANIMG}); receiptId = r.id; }
+    catch(_e){ $("scanstate").innerHTML = "<span class='err'>Beleg-Upload fehlgeschlagen — Einträge ohne Beleg.</span>"; }
   }
-  for(const i of picks){
-    const p = SCANRESULTS.entries[i];
-    const e = {id:newId("e"), ...p, mt:nowIso()};
-    Object.keys(e).forEach(k=>e[k]===null && delete e[k]);
-    if(receiptId){ e.receipt = receiptId; e.receipt_note = SCANRESULTS.note || $("scaninstr").value.trim(); }
-    DATA.entries.push(e);
-    logEvent("add", e.id, null, e);
-  }
+  try{
+    for(const i of picks){
+      const p = SCANRESULTS.entries[i];
+      const e = {...p};
+      Object.keys(e).forEach(k=>e[k]===null && delete e[k]);
+      if(receiptId){ e.receipt = receiptId; e.receipt_note = SCANRESULTS.note || $("scaninstr").value.trim(); }
+      await api("/entry", "POST", e);
+    }
+  }catch(err){ alert("Fehler: " + err.message); }
   CUR = SCANRESULTS.entries[picks[0]].date.slice(0,7);
   $("scan").close(); $("propsave").disabled = false;
-  render();
-  await persist(`Beleg-Scan: ${picks.length} Einträge`);
+  await reload(); show("entries");
 };
 
 /* ================= Beleg ansehen ================= */
 async function showReceipt(e){
-  $("receiptimg").src = ""; $("receiptstate").innerHTML = "<span class='spin'></span> laden & entschlüsseln …";
+  $("receiptimg").src = ""; $("receiptstate").innerHTML = "<span class='spin'></span> laden …";
   $("receiptdlg").showModal();
   try{
-    let env;
-    if(API){ env = await apiGet(`/receipt/${e.receipt}`, true); }
-    else { const j = await ghGet(`data/receipts/${e.receipt}.enc`);
-      env = JSON.parse(td.decode(b64d(j.content.replace(/\n/g,"")))); }
-    const bytes = await decWithDEK(env);
-    $("receiptimg").src = URL.createObjectURL(new Blob([bytes], {type:"image/jpeg"}));
+    const r = await api("/receipt/" + e.receipt);
+    $("receiptimg").src = "data:image/jpeg;base64," + r.data;
     $("receiptstate").textContent = e.receipt_note ? "Extraktion: " + e.receipt_note : "";
   }catch(err){
     $("receiptstate").innerHTML = "<span class='err'>Beleg nicht ladbar: " + esc(err.message) + "</span>";
@@ -1390,20 +1116,13 @@ function entryHistory(id){ HFILTER.entry = id; show("hist"); }
 async function revert(h){
   if(!confirm("Diese Änderung rückgängig machen?")) return;
   const cur = DATA.entries.find(e=>e.id===h.entry);
-  if(h.action==="add" && cur){
-    DATA.entries = DATA.entries.filter(e=>e.id!==h.entry);
-    logEvent("delete", h.entry, cur, null);
-  } else if(h.action==="delete" && !cur && h.before){
-    const e = {...h.before, mt:nowIso()};
-    DATA.entries.push(e);
-    logEvent("revert", e.id, null, e);
-  } else if(h.action==="edit" && cur && h.before){
-    const e = {...h.before, mt:nowIso()};
-    DATA.entries = DATA.entries.map(x=>x.id===e.id?e:x);
-    logEvent("revert", e.id, cur, e);
-  } else { alert("Nicht mehr rückgängig machbar (Zustand hat sich weiterbewegt)."); return; }
-  render(); renderHistory();
-  await persist(`Revert: ${h.action} ${h.entry}`);
+  try{
+    if(h.action==="add" && cur){ await api("/entry/"+h.entry, "DELETE"); }
+    else if((h.action==="delete"||h.action==="reject") && !cur && h.before){ await api("/entry", "POST", h.before); }
+    else if(h.action==="edit" && cur && h.before){ await api("/entry", "POST", h.before); }
+    else { alert("Nicht mehr rückgängig machbar (Zustand hat sich weiterbewegt)."); return; }
+  }catch(e){ alert("Fehler: " + e.message); return; }
+  await reload(); renderHistory();
 }
 
 /* ================= Rendern ================= */
@@ -1460,9 +1179,8 @@ function render(){
   tb.querySelectorAll("[data-d]").forEach(b => b.onclick = async () => {
     const e = DATA.entries.find(x=>x.id===b.dataset.d);
     if(!confirm(`Eintrag löschen?\n${e.date} · ${e.description} · ${eur(amount(e))}`)) return;
-    DATA.entries = DATA.entries.filter(x=>x.id!==b.dataset.d);
-    logEvent("delete", e.id, e, null);
-    render(); await persist(`gelöscht: ${e.description}`);
+    try{ await api("/entry/"+e.id, "DELETE"); await reload(); }
+    catch(err){ alert("Fehler: " + err.message); }
   });
   tb.querySelectorAll("[data-e]").forEach(b => b.onclick = () => startEdit(b.dataset.e));
   tb.querySelectorAll("[data-r]").forEach(b => b.onclick = () =>
@@ -1567,35 +1285,23 @@ $("addform").addEventListener("submit", async ev => {
   ev.preventDefault();
   const f = ev.target;
   const e = {
-    id: EDITING || newId("e"),
     date: f.date.value, category: f.category.value, description: f.description.value.trim(),
-    payer: f.payer.value, unit_price: +f.unit_price.value, split5050: f.split5050.checked,
-    mt: nowIso()
+    payer: f.payer.value, unit_price: +f.unit_price.value, split5050: f.split5050.checked
   };
+  if(EDITING) e.id = EDITING;
   if(f.qty.value) e.qty = +f.qty.value;
   if(f.pfand_qty.value){
     if(e.category!=="Getränke"){ $("addmsg").textContent = "Pfand nur bei Getränken!"; return; }
     e.pfand_qty = +f.pfand_qty.value; e.pfand_type = f.pfand_type.value;
   }
   if(!e.description || !isFinite(e.unit_price)){ $("addmsg").textContent = "Bitte Felder prüfen."; return; }
-  let msg;
-  if(EDITING){
-    const old = DATA.entries.find(x=>x.id===EDITING);
-    if(old.receipt){ e.receipt = old.receipt; e.receipt_note = old.receipt_note; }
-    DATA.entries = DATA.entries.map(x=>x.id===EDITING?e:x);
-    logEvent("edit", e.id, old, e);
-    msg = `geändert: ${e.description}`;
-  } else {
-    DATA.entries.push(e);
-    logEvent("add", e.id, null, e);
-    msg = `+ ${e.date} ${e.description} (${eur(amount(e))})`;
-  }
+  try{ await api("/entry", "POST", e); }
+  catch(err){ $("addmsg").textContent = err.message; return; }
   CUR = e.date.slice(0,7);
   endEdit();
   $("addsheet").close();
   $("addmsg").textContent = "";
-  render(); show("entries");
-  await persist(msg);
+  await reload(); show("entries");
 });
 
 /* ================= Zahlungsbestätigung (der Empfänger bestätigt) ================= */
@@ -1626,20 +1332,9 @@ function renderConfirms(){
   }
 }
 async function confirmPay(id, received){
-  const e = DATA.entries.find(x=>x.id===id); if(!e) return;
-  if(received){
-    const before = structuredClone(e);
-    e.pay_status = "confirmed"; e.confirmed_by = actor(); e.confirmed_ts = nowIso();
-    logEvent("confirm", e.id, before, structuredClone(e));
-    render();
-    await persist(`Zahlung bestätigt: ${eur(amount(e))} von ${e.payer}`);
-  } else {
-    if(!confirm("Zahlung als NICHT erhalten ablehnen? Die Meldung wird entfernt.")) return;
-    DATA.entries = DATA.entries.filter(x=>x.id!==id);
-    logEvent("reject", e.id, e, null);
-    render();
-    await persist(`Zahlung abgelehnt: ${eur(amount(e))} von ${e.payer}`);
-  }
+  if(!received && !confirm("Zahlung als NICHT erhalten ablehnen? Die Meldung wird entfernt.")) return;
+  try{ await api((received?"/confirm/":"/reject/")+id, "POST"); await reload(); }
+  catch(err){ alert("Fehler: " + err.message); }
 }
 
 /* ================= Zahlungs-Erinnerung ================= */
@@ -1695,14 +1390,15 @@ function switchPayMethod(){
 }
 function openPay(){
   const total = Math.round(netOf(DATA.entries)*100)/100;
-  if(Math.abs(total) < 0.01){ alert("Nichts offen — ausgeglichen."); return; }
-  const debtor = total > 0 ? "Zeynel" : "Kawa";
-  const creditor = total > 0 ? "Kawa" : "Zeynel";
+  // Wer zahlt, ist immer der angemeldete Nutzer; der andere ist Empfänger.
+  const debtor = actor(), creditor = (USERS.map(u=>u.name).find(n=>n!==debtor)) || (debtor==="Kawa"?"Zeynel":"Kawa");
   const ibans = (DATA.settings && DATA.settings.iban) || {};
   const iban = (ibans[creditor] || "").replace(/\s+/g,"");
   window._pay = {debtor, creditor, iban};
   $("paywho").textContent = `${debtor} zahlt ${creditor}`;
-  $("payamt").value = Math.abs(total).toFixed(2);
+  // Vorschlag: offener Betrag, falls ich der Schuldner bin
+  const suggest = (debtor==="Zeynel" && total>0) || (debtor==="Kawa" && total<0) ? Math.abs(total) : 0;
+  $("payamt").value = (suggest||0).toFixed(2);
   // Standard-Methode: Überweisung wenn IBAN da, sonst Bargeld
   document.getElementById("pmTransfer").checked = !!iban;
   document.getElementById("pmCash").checked = !iban;
@@ -1720,19 +1416,13 @@ $("copyiban").onclick = async () => {
   catch(_e){ $("paymsg").textContent = window._pay.iban; }
 };
 $("paydone").onclick = async () => {
-  const p = window._pay;
   const amt = Math.max(0, Math.round((parseFloat($("payamt").value)||0)*100)/100);
   if(amt < 0.01){ $("paymsg").innerHTML = "<span class='err'>Betrag fehlt.</span>"; return; }
   const method = document.getElementById("pmCash").checked ? "Bar" : "Überweisung";
-  const e = {id:newId("e"), date:new Date().toISOString().slice(0,10), category:"Rückzahlung",
-    description:`Ausgleichszahlung ${method==="Bar"?"bar ":""}(${p.debtor} → ${p.creditor})`, payer:p.debtor,
-    unit_price:amt, split5050:false, mt:nowIso(),
-    pay_status:"pending", pay_method:method, claimed_by:p.debtor, claimed_ts:nowIso()};
-  DATA.entries.push(e); logEvent("claim", e.id, null, e);
-  CUR = e.date.slice(0,7);
+  try{ await api("/pay", "POST", {amount:amt, method}); }
+  catch(err){ $("paymsg").innerHTML = "<span class='err'>" + esc(err.message) + "</span>"; return; }
   $("paydlg").close();
-  render(); show("home");
-  await persist(`Zahlung gemeldet (${method}): ${p.debtor} → ${p.creditor} ${eur(amt)}`);
+  await reload(); show("home");
 };
 
 /* ================= Navigation, Theme, Setup, Unlock ================= */
@@ -1767,12 +1457,9 @@ if(localStorage.theme) document.documentElement.dataset.theme = localStorage.the
 $("setupbtn").onclick = () => {
   const c = cfg();
   $("whoinfo").textContent = "Angemeldet als " + actor() + (isAdmin() ? " (Admin)" : "");
-  $("cloudinfo").style.display = API ? "" : "none";
-  $("ghsync").style.display = API ? "none" : "";
-  $("cfgrepo").value = c.repo; $("cfgbranch").value = c.branch;
-  $("cfgtoken").value = ghTok(); $("cfgprov").value = c.prov;
+  $("cfgprov").value = c.prov;
   $("cfgmodel").value = c.model; $("cfgbase").value = c.base;
-  $("cfgaikey").value = (DATA && DATA.settings && DATA.settings.ai_key) || VAULT.aikey || "";
+  $("cfgaikey").value = (DATA && DATA.settings && DATA.settings.ai_key) || "";
   $("cfgremday").value = (DATA && DATA.settings && DATA.settings.reminder_day) || 1;
   const ib=(DATA && DATA.settings && DATA.settings.iban) || {};
   $("cfgibanK").value = ib.Kawa || ""; $("cfgibanZ").value = ib.Zeynel || "";
@@ -1783,51 +1470,34 @@ $("setupbtn").onclick = () => {
   $("setup").showModal();
 };
 
-function meUser(){ return (KEYS && KEYS.users.find(u=>u.name===actor())) || null; }
-function isAdmin(){ const u = meUser(); return !!(u && u.admin); }
 function renderPwPanel(){
   const box = $("pwpanel"); if(!box) return;
-  const me = actor(), admin = isAdmin();
+  const meName = actor(), admin = isAdmin();
   let h = `<div class="subcard">
-      <label>Mein Passwort ändern (${esc(me)})</label>
+      <label>Mein Passwort ändern (${esc(meName)})</label>
       <input id="pwnew" type="password" placeholder="neues Passwort" autocomplete="new-password">
       <button class="btn primary" id="pwsave">Passwort speichern</button>
     </div>`;
   if(admin){
     h += `<div class="subcard">
         <label>Admin: Passwort für anderen Nutzer setzen</label>
-        <select id="pwother">${KEYS.users.filter(u=>u.name!==me).map(u=>`<option>${esc(u.name)}</option>`).join("")}</select>
+        <select id="pwother">${USERS.filter(u=>u.name!==meName).map(u=>`<option>${esc(u.name)}</option>`).join("")}</select>
         <input id="pwotherval" type="password" placeholder="neues Passwort" autocomplete="new-password">
         <button class="btn" id="pwsetother">Für Nutzer setzen</button>
-      </div>
-      <div class="subcard">
-        <label>Wiederherstellungscode — nur Admin, sicher aufbewahren</label>
-        <button class="btn" id="showrec">Code anzeigen</button>
-        <div id="recout" class="codebox" style="display:none"></div>
       </div>`;
   }
   box.innerHTML = h;
   $("pwsave").onclick = async () => {
     const np = $("pwnew").value; if(np.length<4){ alert("Passwort zu kurz."); return; }
-    const u = meUser(); Object.assign(u, await wrapForUser(np));
-    if(localStorage.pw) localStorage.pw = np;
-    await persistKeys(`Passwort geändert: ${me}`);
-    $("pwnew").value=""; alert("Passwort gespeichert.");
+    try{ await api("/password","POST",{new_password:np}); $("pwnew").value=""; alert("Passwort gespeichert."); }
+    catch(e){ alert("Fehler: " + e.message); }
   };
   if(admin){
     $("pwsetother").onclick = async () => {
       const name = $("pwother").value, np = $("pwotherval").value;
-      if(name===me){ alert("Für dich selbst oben."); return; }
       if(np.length<4){ alert("Passwort zu kurz."); return; }
-      let u = KEYS.users.find(x=>x.name===name);
-      const wrap = await wrapForUser(np);
-      if(u) Object.assign(u, wrap); else KEYS.users.push({name, admin:false, ...wrap});
-      await persistKeys(`Admin setzt Passwort: ${name}`);
-      $("pwotherval").value=""; alert(`Passwort für ${name} gesetzt.`);
-    };
-    $("showrec").onclick = () => {
-      $("recout").style.display = "";
-      $("recout").textContent = DEKRAW ? fmtCode(b32encode(DEKRAW)) : "(nicht verfügbar)";
+      try{ await api("/admin/password","POST",{name, new_password:np}); $("pwotherval").value=""; alert(`Passwort für ${name} gesetzt.`); }
+      catch(e){ alert("Fehler: " + e.message); }
     };
   }
 }
@@ -1836,8 +1506,7 @@ $("cfgdictate").onchange = () =>
 $("cfgprov").onchange = () => {
   $("baseurlrow").style.display = $("cfgprov").value==="custom" ? "" : "none";
   $("cfgmodel").placeholder = {openrouter:"qwen/qwen3-vl-235b-a22b-instruct",
-    gemini:"gemini-2.5-pro", openai:"gpt-4o-mini",
-    custom:"z. B. glm-4.6v"}[$("cfgprov").value];
+    gemini:"gemini-2.5-pro", openai:"gpt-4o-mini", custom:"z. B. glm-4.6v"}[$("cfgprov").value];
 };
 $("cfgcancel").onclick = () => $("setup").close();
 $("notifbtn").onclick = async () => {
@@ -1846,105 +1515,49 @@ $("notifbtn").onclick = async () => {
   $("notifbtn").textContent = p==="granted" ? "Benachrichtigungen aktiv ✓" : "Benachrichtigungen erlauben";
 };
 $("cfgsave").onclick = async () => {
-  localStorage.repo = $("cfgrepo").value.trim();
-  localStorage.branch = $("cfgbranch").value.trim() || "main";
   localStorage.prov = $("cfgprov").value;
   localStorage.model = $("cfgmodel").value.trim();
   localStorage.base = $("cfgbase").value.trim();
   localStorage.dictate = $("cfgdictate").value;
   localStorage.amodel = $("cfgamodel").value.trim();
-  localStorage.ghtoken = $("cfgtoken").value.trim();
-  const newKey = $("cfgaikey").value.trim();
-  let keyChanged = false;
-  if(DATA){
-    DATA.settings = DATA.settings || {};
-    if((DATA.settings.ai_key||"") !== newKey){ DATA.settings.ai_key = newKey; keyChanged = true; }
-    const rd = Math.min(28, Math.max(1, +$("cfgremday").value || 1));
-    if(DATA.settings.reminder_day !== rd){ DATA.settings.reminder_day = rd; keyChanged = true; }
-    const ibK=$("cfgibanK").value.replace(/\s+/g,"").toUpperCase();
-    const ibZ=$("cfgibanZ").value.replace(/\s+/g,"").toUpperCase();
-    DATA.settings.iban = DATA.settings.iban || {};
-    if(DATA.settings.iban.Kawa!==ibK || DATA.settings.iban.Zeynel!==ibZ){
-      DATA.settings.iban = {Kawa:ibK, Zeynel:ibZ}; keyChanged = true; }
-  } else { VAULT.aikey = newKey; await saveVault(); }
-  $("setup").close(); window._env = null; FILESHA = null;
-  if(DATA){
-    $("syncstate").textContent = "Einstellungen gespeichert.";
-    render();
-    if(keyChanged) await persist("KI-Schlüssel aktualisiert (geteilt)");
-  }
+  const patch = {
+    ai_key: $("cfgaikey").value.trim(),
+    reminder_day: Math.min(28, Math.max(1, +$("cfgremday").value || 1)),
+    iban: { Kawa: $("cfgibanK").value.replace(/\s+/g,"").toUpperCase(),
+            Zeynel: $("cfgibanZ").value.replace(/\s+/g,"").toUpperCase() }
+  };
+  try{ await api("/settings","POST",patch); DATA.settings = {...DATA.settings, ...patch};
+    $("syncstate").textContent = "Einstellungen gespeichert."; render(); }
+  catch(e){ alert("Fehler: " + e.message); }
+  $("setup").close();
 };
 
-async function bootLoaded(){
-  if(!window._booted) window._booted = await loadBoot();
-  return window._booted;
-}
+/* ================= Login / Session ================= */
+function showLock(){ $("app").style.display="none"; $("lockwrap").style.display=""; }
 async function enterApp(){
-  await loadVault();
-  if(API && !window._env){                 // Ledger erst nach Login (mit Auth) laden
-    window._env = await apiGet("/ledger", true);
-  }
-  DATA = await decJSON(window._env);
-  DATA.history = DATA.history || [];
   $("lockwrap").style.display = "none"; $("app").style.display = "";
   const ms = monthsList(); CUR = ms[ms.length-1];
   render();
 }
-async function unlock(){
-  const pw = $("pw").value;
+async function login(){
+  const name = $("loginuser").value, pw = $("pw").value;
   if(!pw) return;
   $("lockerr").textContent = "";
   try{
-    if(!await bootLoaded()){ $("lockerr").textContent = "Daten nicht ladbar."; return; }
-    const u = await unlockWithPassword(pw);
-    if(!u){ $("lockerr").textContent = "Falsches Passwort."; return; }
-    localStorage.actor = u.name;              // wer bin ich → automatisch aus dem passenden Schlüssel
-    if($("remember").checked) localStorage.pw = pw; else delete localStorage.pw;
+    await api("/login","POST",{name, password:pw});
+    await loadState();
     await enterApp();
-  }catch(err){
-    DEK = null;
-    $("lockerr").textContent = "Fehler: " + err.message;
-  }
+  }catch(e){ $("lockerr").textContent = e.message==="Falscher Login" ? "Falscher Login." : e.message; }
 }
-/* Sync-Setup vor dem Login */
-$("syncx").onclick = $("synccancel").onclick = () => $("syncdlg").close();
-$("syncsave").onclick = async () => {
-  $("syncerr").textContent = "";
-  const repo = $("syncrepo").value.trim(), tok = $("synctoken").value.trim();
-  if(!repo || !tok){ $("syncerr").textContent = "Repo und Token angeben."; return; }
-  localStorage.repo = repo; localStorage.ghtoken = tok;
-  window._booted = false; KEYS = null; window._env = null;
-  if(await loadBoot()){ $("syncdlg").close(); $("lockerr").textContent = "Geladen — jetzt Passwort eingeben."; }
-  else $("syncerr").textContent = "Laden fehlgeschlagen — Repo/Token prüfen.";
-};
+$("unlock").onclick = login;
+$("pw").addEventListener("keydown", e => { if(e.key==="Enter") login(); });
+const lob = $("logoutbtn"); if(lob) lob.onclick = async () => { try{ await api("/logout","POST"); }catch(_e){} location.reload(); };
 
-/* Wiederherstellung per Code */
-$("recoverlink").onclick = ev => { ev.preventDefault(); $("recerr").textContent=""; $("recoverdlg").showModal(); };
-$("reccancel").onclick = $("recx").onclick = () => $("recoverdlg").close();
-$("recgo").onclick = async () => {
-  $("recerr").textContent = "";
-  try{
-    if(!await bootLoaded()){ $("recerr").textContent = "Daten nicht ladbar."; return; }
-    const raw = b32decode($("reccode").value);
-    if(raw.length !== 32){ $("recerr").textContent = "Code ungültig (Länge)."; return; }
-    try{ await setDEK(raw); }
-    catch(_e){ $("recerr").textContent = "Code passt nicht zu diesen Daten."; return; }
-    const newpw = $("recnew").value;
-    if(newpw.length < 4){ $("recerr").textContent = "Neues Passwort zu kurz."; return; }
-    const name = $("recuser").value;
-    let u = KEYS.users.find(x=>x.name===name);
-    const wrap = await wrapForUser(newpw);
-    if(u) Object.assign(u, wrap); else KEYS.users.push(u={name, admin:false, ...wrap});
-    localStorage.actor = name;
-    await loadVault();
-    await persistKeys(`Passwort wiederhergestellt: ${name}`);
-    $("recoverdlg").close();
-    await enterApp();
-  }catch(err){ $("recerr").textContent = "Fehler: " + err.message; }
-};
-$("unlock").onclick = unlock;
-$("pw").addEventListener("keydown", e => { if(e.key==="Enter") unlock(); });
-if(localStorage.pw){ $("pw").value = localStorage.pw; $("remember").checked = true; unlock(); }
+/* Auto-Login per Session-Cookie */
+(async () => {
+  try{ await loadState(); await enterApp(); }
+  catch(_e){ /* nicht angemeldet → Lock-Screen bleibt */ }
+})();
 
 if("serviceWorker" in navigator && location.protocol.startsWith("http"))
   navigator.serviceWorker.register("sw.js").catch(()=>{});
