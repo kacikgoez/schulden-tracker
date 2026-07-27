@@ -41,15 +41,16 @@ export default function Entries({ onEntry }) {
         <IconButton disabled={idx >= ms.length - 1} onClick={() => setCur(ms[idx + 1])}><ChevronRightRoundedIcon /></IconButton>
       </Box>
 
-      <Box sx={{ display: "flex", gap: 3, px: 0.5 }}>
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700 }}>Dieser Monat</Typography>
-          <Typography variant="h2">{mNet >= 0 ? "+" : "−"} {eur(Math.abs(mNet))}</Typography>
+      <Box sx={{ display: "flex", alignItems: "stretch", px: 1, py: 0.5 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>Dieser Monat</Typography>
+          <Typography variant="h2" noWrap>{mNet >= 0 ? "+ " : "− "}{eur(Math.abs(mNet))}</Typography>
         </Box>
-        <Divider orientation="vertical" flexItem />
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700 }}>Bis dato</Typography>
-          <Typography variant="h2">{cum >= 0 ? "Z→K " : "K→Z "}{eur(Math.abs(cum))}</Typography>
+        <Divider orientation="vertical" flexItem sx={{ mx: 2 }} />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>Bis dato</Typography>
+          <Typography variant="h2" noWrap>{eur(Math.abs(cum))}</Typography>
+          <Typography variant="caption" color="text.secondary">{cum >= 0 ? "Zeynel → Kawa" : "Kawa → Zeynel"}</Typography>
         </Box>
       </Box>
 
