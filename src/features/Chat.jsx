@@ -14,6 +14,7 @@ import { netOf, amount, owedOf, monthOf, thisMonth } from "../lib/format";
 const TOOLS = [
   { type: "function", function: { name: "get_balance", description: "Aktuellen Saldo abrufen.", parameters: { type: "object", properties: {} } } },
   { type: "function", function: { name: "list_entries", description: "Einträge eines Monats mit IDs.", parameters: { type: "object", properties: { month: { type: "string", description: "JJJJ-MM" } } } } },
+  { type: "function", function: { name: "find_entries", description: "Einträge über ALLE Monate nach Text und/oder Datum durchsuchen (liefert IDs). Damit findest du einen vom Nutzer beschriebenen Eintrag selbst.", parameters: { type: "object", properties: { query: { type: "string", description: "Teil der Beschreibung, z. B. 'Tanken Star'" }, date: { type: "string", description: "JJJJ-MM-TT" }, month: { type: "string", description: "JJJJ-MM" } } } } },
   { type: "function", function: { name: "add_entry", description: "Ausgabe anlegen (Zahler = angemeldeter Nutzer, andere schuldet).", parameters: { type: "object", properties: { date: { type: "string" }, category: { type: "string" }, description: { type: "string" }, amount: { type: "number" }, qty: { type: "integer" }, split5050: { type: "boolean" }, pfand_qty: { type: "integer" }, pfand_type: { type: "string" } }, required: ["category", "description", "amount"] } } },
   { type: "function", function: { name: "edit_entry", description: "Eintrag ändern (per ID).", parameters: { type: "object", properties: { id: { type: "string" }, date: { type: "string" }, category: { type: "string" }, description: { type: "string" }, amount: { type: "number" }, qty: { type: "integer" }, split5050: { type: "boolean" } }, required: ["id"] } } },
   { type: "function", function: { name: "delete_entry", description: "Eintrag löschen (per ID).", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } } },
@@ -25,7 +26,7 @@ const TOOLS = [
 const TOOL_LABEL = {
   add_entry: "➕ Eintrag angelegt", edit_entry: "✎ geändert", delete_entry: "🗑 gelöscht",
   add_recurring: "🔁 Abo angelegt", delete_recurring: "🗑 Abo gelöscht", report_payment: "💸 Zahlung gemeldet",
-  get_balance: "📊 Saldo geprüft", list_entries: "🔎 Einträge gelesen", list_recurring: "🔎 Abos gelesen",
+  get_balance: "📊 Saldo geprüft", list_entries: "🔎 Einträge gelesen", find_entries: "🔎 Eintrag gesucht", list_recurring: "🔎 Abos gelesen",
 };
 
 function TypingDots() {
@@ -60,6 +61,7 @@ export default function Chat({ open, onClose }) {
     const s = await fresh();
     if (name === "get_balance") { const t = netOf(s.entries); return { saldo_eur: Math.abs(t), richtung: t >= 0 ? "Zeynel schuldet Kawa" : (t < 0 ? "Kawa schuldet Zeynel" : "ausgeglichen") }; }
     if (name === "list_entries") { const mo = a.month || thisMonth(); return s.entries.filter((e) => monthOf(e) === mo).map((e) => ({ id: e.id, date: e.date, category: e.category, description: e.description, payer: e.payer, betrag: amount(e), split5050: e.split5050, anteil: owedOf(e), status: e.pay_status || "normal" })); }
+    if (name === "find_entries") { const q = (a.query || "").toLowerCase(); const hits = s.entries.filter((e) => (!q || e.description.toLowerCase().includes(q)) && (!a.date || e.date === a.date) && (!a.month || monthOf(e) === a.month)).map((e) => ({ id: e.id, date: e.date, category: e.category, description: e.description, payer: e.payer, betrag: amount(e), split5050: e.split5050 })); return { treffer: hits.length, entries: hits.slice(0, 25) }; }
     if (name === "list_recurring") return (s.recurring || []).map((r) => ({ id: r.id, description: r.description, amount: r.amount, category: r.category, payer: r.payer, active_from: r.active_from, active_until: r.active_until }));
     if (name === "add_entry") { const e = { date: a.date || new Date().toISOString().slice(0, 10), category: a.category, description: a.description, unit_price: a.amount, split5050: !!a.split5050 }; if (a.qty) e.qty = a.qty; if (a.pfand_qty) { e.pfand_qty = a.pfand_qty; e.pfand_type = a.pfand_type || "Einweg"; } const r = await api("/entry", "POST", e); return { ok: true, id: r.entry.id }; }
     if (name === "edit_entry") { const cur = s.entries.find((x) => x.id === a.id); if (!cur) return { error: "nicht gefunden" }; const e = { id: a.id, date: a.date || cur.date, category: a.category || cur.category, description: a.description || cur.description, unit_price: a.amount != null ? a.amount : cur.unit_price, split5050: a.split5050 != null ? a.split5050 : cur.split5050 }; const q = a.qty != null ? a.qty : cur.qty; if (q) e.qty = q; await api("/entry", "POST", e); return { ok: true }; }
@@ -71,7 +73,25 @@ export default function Chat({ open, onClose }) {
   }
 
   const systemPrompt = () =>
-    `Du bist der Assistent im Schulden-Tracker und handelst als ${me}. Neue Einträge werden IMMER ${me} als Zahler zugeordnet → ${other} schuldet dann. Nutze Tools für Ausgaben/Abos/Zahlungen. Erfinde keine IDs (hole sie via list_entries). Frage bei Unklarheit kurz nach. Kategorien: ${data.categories.join(", ")}. Heute: ${new Date().toISOString().slice(0, 10)}. Antworte knapp auf Deutsch und bestätige, was du getan hast.`;
+`Du bist ein handlungsstarker, agentischer Assistent im Schulden-Tracker und arbeitest als ${me}.
+Deine Aufgabe: Anweisungen selbstständig und vollständig ausführen — nicht den Nutzer um Arbeit bitten.
+
+ARBEITSWEISE (wichtig):
+- Handle eigenständig. Wenn der Nutzer einen Eintrag per Beschreibung und/oder Datum meint
+  (z. B. „Tanken Star Marienheide 18.07."), rufe SELBST find_entries auf (durchsucht alle Monate),
+  finde die richtige ID und führe die Aktion (edit/delete) direkt aus.
+- FRAGE NIEMALS nach einer ID — die kennt der Nutzer nicht und sie ist deine Aufgabe.
+- Nur wenn nach dem Nachschlagen WIRKLICH mehrere Einträge passen, liste die 2–3 Treffer
+  kurz mit Datum/Betrag auf und frage, welcher gemeint ist. Passt genau einer: einfach machen.
+- Findest du im genannten Monat nichts, prüfe die Nachbarmonate, bevor du aufgibst.
+- Plane mehrere Schritte hintereinander (erst list_entries, dann edit_entry) ohne Zwischenfrage.
+- Rechne selbst (z. B. „mach 50:50" → split5050=true; „erhöh um 5€" → neuen Betrag berechnen).
+
+REGELN:
+- Neue Einträge werden IMMER ${me} als Zahler gebucht → ${other} schuldet dann (ggf. die Hälfte).
+- Erfinde keine IDs. Kategorien: ${data.categories.join(", ")}. Heute: ${new Date().toISOString().slice(0, 10)}.
+
+Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mit Betrag/Datum).`;
 
   const appendDelta = (delta) => setMsgs((m) => {
     const c = [...m], last = c[c.length - 1];
@@ -98,7 +118,7 @@ export default function Chat({ open, onClose }) {
           for (const tc of msg.tool_calls) {
             let args = {}; try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
             let result; try { result = await execTool(tc.function.name, args); } catch (e) { result = { error: e.message }; }
-            if (!["get_balance", "list_entries", "list_recurring"].includes(tc.function.name)) dirty = true;
+            if (!["get_balance", "list_entries", "find_entries", "list_recurring"].includes(tc.function.name)) dirty = true;
             setMsgs((m) => [...m, { role: "tool", text: (TOOL_LABEL[tc.function.name] || tc.function.name) + (result?.error ? ` — ${result.error}` : "") }]);
             convo.current.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
           }
