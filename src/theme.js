@@ -54,10 +54,12 @@ export function buildTheme(mode) {
       MuiCard: {
         defaultProps: { elevation: 0 },
         styleOverrides: {
-          root: { borderRadius: 16, border: `1px solid ${border}`, backgroundImage: "none", boxShadow: shadow },
+          // Flach statt „Box": kein Rahmen, kein Schatten — nur eine dezent abgesetzte Fläche.
+          root: { borderRadius: 18, border: "none", backgroundImage: "none", boxShadow: "none",
+            backgroundColor: dark ? "#161719" : "#ffffff" },
         },
       },
-      MuiCardContent: { styleOverrides: { root: { padding: 18, "&:last-child": { paddingBottom: 18 } } } },
+      MuiCardContent: { styleOverrides: { root: { padding: 20, "&:last-child": { paddingBottom: 20 } } } },
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
