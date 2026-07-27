@@ -245,6 +245,19 @@ dialog .foot{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
 .cbubble.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
 .cbubble.bot{align-self:flex-start;background:var(--fill);color:var(--ink);border-bottom-left-radius:5px}
 .ctool{align-self:center;font-size:12px;color:var(--muted);background:var(--fill);border-radius:999px;padding:3px 11px;max-width:90%;text-align:center}
+/* Einstellungen — gruppiert */
+.whoami-chip{display:inline-block;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);
+  font-weight:650;font-size:13px;border-radius:999px;padding:5px 13px;margin:2px 0 16px}
+.setgrp{background:var(--fill);border-radius:18px;padding:15px 16px;margin-bottom:14px}
+.setgrp-h{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;letter-spacing:-.01em;margin-bottom:12px}
+.setgrp-h span{font-size:17px}
+.setgrp-hint{margin-left:auto;font-size:12px;font-weight:500;color:var(--muted)}
+.setgrp label{margin:12px 0 5px}.setgrp label:first-of-type{margin-top:0}
+.setgrp input,.setgrp select{background:var(--card-solid)}
+.setgrp .subcard{background:var(--card-solid)}
+.setgrp .subcard input,.setgrp .subcard select{background:var(--fill)}
+.setup-foot{position:sticky;bottom:-22px;background:var(--card-solid);margin:14px -20px -22px;padding:14px 20px 22px;
+  border-top:.5px solid var(--hairline)}
 .proposal{background:var(--fill);border:none;border-radius:16px;padding:12px;margin:8px 0;
   display:flex;gap:10px;align-items:flex-start}
 .proposal input[type=checkbox]{width:auto;margin-top:4px;accent-color:var(--accent)}
@@ -597,50 +610,57 @@ input[type=checkbox]{accent-color:var(--accent)}
 </dialog>
 
 <dialog id="setup">
-  <h3>Einstellungen</h3>
-  <p class="note" id="whoinfo" style="margin:0 0 4px"></p>
+  <div class="sheet-head"><h3>Einstellungen</h3>
+    <button class="xclose" id="cfgclose" aria-label="Schließen">✕</button></div>
+  <div class="whoami-chip" id="whoinfo"></div>
 
-  <h3 class="sect">Passwort & Nutzer</h3>
-  <div id="pwpanel"></div>
-
-  <label>Zahlungs-Erinnerung am … Tag des Monats (geteilt)</label>
-  <div style="display:flex;gap:8px">
-    <input id="cfgremday" type="number" min="1" max="28" placeholder="1" style="flex:1">
-    <button class="btn" id="notifbtn" type="button">Benachrichtigungen erlauben</button>
+  <div class="setgrp">
+    <div class="setgrp-h"><span>🔒</span> Passwort &amp; Nutzer</div>
+    <div id="pwpanel"></div>
   </div>
 
-  <button class="btn" id="logoutbtn" style="width:100%;margin-top:14px">Abmelden</button>
+  <div class="setgrp">
+    <div class="setgrp-h"><span>🔔</span> Zahlungs-Erinnerung</div>
+    <label>Erinnern am … Tag des Monats</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="cfgremday" type="number" min="1" max="28" placeholder="1" style="width:80px">
+      <button class="btn" id="notifbtn" type="button" style="flex:1">Benachrichtigungen erlauben</button>
+    </div>
+  </div>
 
-  <h3 class="sect">Bankverbindungen (geteilt, für GiroCode)</h3>
-  <label>IBAN Kawa</label><input id="cfgibanK" placeholder="DE…" autocomplete="off">
-  <label>IBAN Zeynel</label><input id="cfgibanZ" placeholder="DE…" autocomplete="off">
+  <div class="setgrp">
+    <div class="setgrp-h"><span>🏦</span> Bankverbindungen <span class="setgrp-hint">für GiroCode</span></div>
+    <label>IBAN Kawa</label><input id="cfgibanK" placeholder="DE…" autocomplete="off">
+    <label>IBAN Zeynel</label><input id="cfgibanZ" placeholder="DE…" autocomplete="off">
+  </div>
 
-  <h3 class="sect">KI (Beleg-Scan & Diktat)</h3>
-  <p class="note">Empfehlung: <b>Qwen3-VL 235B</b> über OpenRouter — Flaggschiff-Vision-Modell
-    (Top-OCR, deutsch), ca. 0,1–0,2 Cent pro Beleg. Schlüssel: openrouter.ai → „Keys".
-    Diktat läuft kostenlos über die Browser-Spracherkennung; die KI wandelt nur den Text
-    in einen Eintrag um.</p>
-  <label>Anbieter</label>
-  <select id="cfgprov">
-    <option value="openrouter">OpenRouter — Qwen3-VL 235B (empfohlen)</option>
-    <option value="gemini">Google Gemini</option>
-    <option value="openai">OpenAI</option>
-    <option value="custom">OpenAI-kompatibel (eigene Base-URL)</option>
-  </select>
-  <label>Modell</label><input id="cfgmodel" placeholder="qwen/qwen3-vl-235b-a22b-instruct">
-  <div id="baseurlrow" style="display:none"><label>Base-URL</label>
-    <input id="cfgbase" placeholder="https://openrouter.ai/api/v1"></div>
-  <label>API-Schlüssel</label><input id="cfgaikey" type="password" placeholder="…">
-  <label>Diktat-Engine</label>
-  <select id="cfgdictate">
-    <option value="browser">Browser-Spracherkennung (kostenlos)</option>
-    <option value="ki">KI-Audio (Qwen3-ASR/Omni — versteht Deutsch direkt)</option>
-  </select>
-  <div id="amodelrow" style="display:none"><label>Audio-Modell</label>
-    <input id="cfgamodel" placeholder="qwen/qwen3-asr-flash"></div>
-  <p class="note">Der KI-Schlüssel ist <b>geteilt</b>: einmal eintragen, er wird verschlüsselt im
-    Datensatz gespeichert und ist automatisch auf allen Geräten da. Der GitHub-Token bleibt pro Gerät.</p>
-  <div class="foot">
+  <div class="setgrp">
+    <div class="setgrp-h"><span>🤖</span> KI-Assistent <span class="setgrp-hint">Chat · Beleg-Scan · Diktat</span></div>
+    <p class="note" style="margin:0 0 10px">Empfehlung: <b>Qwen3-VL 235B</b> über OpenRouter (Top-OCR, deutsch,
+      ~0,1–0,2 Cent/Beleg). Schlüssel: openrouter.ai → „Keys". Geteilt für alle Geräte.</p>
+    <label>Anbieter</label>
+    <select id="cfgprov">
+      <option value="openrouter">OpenRouter — Qwen3-VL 235B (empfohlen)</option>
+      <option value="gemini">Google Gemini</option>
+      <option value="openai">OpenAI</option>
+      <option value="custom">OpenAI-kompatibel (eigene Base-URL)</option>
+    </select>
+    <label>Modell</label><input id="cfgmodel" placeholder="qwen/qwen3-vl-235b-a22b-instruct">
+    <div id="baseurlrow" style="display:none"><label>Base-URL</label>
+      <input id="cfgbase" placeholder="https://openrouter.ai/api/v1"></div>
+    <label>API-Schlüssel</label><input id="cfgaikey" type="password" placeholder="…">
+    <label>Diktat-Engine</label>
+    <select id="cfgdictate">
+      <option value="browser">Browser-Spracherkennung (kostenlos)</option>
+      <option value="ki">KI-Audio (Qwen3-ASR/Omni — versteht Deutsch direkt)</option>
+    </select>
+    <div id="amodelrow" style="display:none"><label>Audio-Modell</label>
+      <input id="cfgamodel" placeholder="qwen/qwen3-asr-flash"></div>
+  </div>
+
+  <button class="btn" id="logoutbtn" style="width:100%;color:var(--crit)">Abmelden</button>
+
+  <div class="foot setup-foot">
     <button class="btn" id="cfgcancel">Abbrechen</button>
     <button class="btn primary" id="cfgsave">Speichern</button>
   </div>
@@ -1791,7 +1811,7 @@ $("cfgprov").onchange = () => {
   $("cfgmodel").placeholder = {openrouter:"qwen/qwen3-vl-235b-a22b-instruct",
     gemini:"gemini-2.5-pro", openai:"gpt-4o-mini", custom:"z. B. glm-4.6v"}[$("cfgprov").value];
 };
-$("cfgcancel").onclick = () => $("setup").close();
+$("cfgcancel").onclick = $("cfgclose").onclick = () => $("setup").close();
 $("notifbtn").onclick = async () => {
   if(!("Notification" in window)){ alert("Dieser Browser unterstützt keine Benachrichtigungen."); return; }
   const p = await Notification.requestPermission();
