@@ -50,15 +50,39 @@ ledger.py         ←  CLI: balance / show / add / rm / json … (nutzt den DEK 
 - **Zwei Schreibwege, ein Format:** Browser (verschlüsselt lokal, committet per
   GitHub-API) und CLI (entschlüsselt lokal, committet per `git push`).
 
-## Hosting (kostenlos)
+## Hosting (eingerichtet)
 
-1. Repo auf GitHub pushen (`gh repo create schulden-tracker --private --source . --push`).
-2. **GitHub Pages:** Settings → Pages → „Deploy from branch" → `main`, Ordner `/ (root)`.
-   Bei privatem Repo braucht Pages einen Pro-Account — Alternative ohne Kosten:
-   **Cloudflare Pages** (Repo verbinden, kein Build-Befehl, Output `/`).
-3. Fertig. Die Seite lädt `data/keys.enc` + `data/ledger.enc` und fragt nach dem Passwort.
+Live: **https://kacikgoez.github.io/schulden-tracker/**
+
+Aufbau (zwei Repos):
+- **schulden-tracker** (öffentlich) — die App, via GitHub Pages gehostet. Enthält
+  **keine** Daten.
+- **schulden-tracker-data** (privat) — die verschlüsselten Daten (`data/keys.enc`,
+  `data/ledger.enc`, `data/receipts/`). Niemand außer den Token-Inhabern kann sie laden.
+
+### Einmalig pro Gerät: Zugriffs-Token
+
+Da die Daten im privaten Repo liegen, braucht jedes Gerät einen Token (App + CLI).
+
+1. **github.com/settings/personal-access-tokens** → „Generate new token" → *Fine-grained*.
+2. *Resource owner* = kacikgoez, *Repository access* → „Only select repositories" →
+   **schulden-tracker-data**.
+3. *Permissions* → *Repository permissions* → **Contents: Read and write**.
+4. Token erzeugen, kopieren.
+5. In der App auf dem Login-Screen „Sync einrichten" → Repo (vorausgefüllt) + Token
+   einfügen → „Speichern & laden". Danach lädt und speichert die App automatisch,
+   keine Downloads mehr.
 
 Lokal testen: `python3 -m http.server -d ~/schulden-tracker 8080` → http://localhost:8080
+
+### CLI ⇄ privates Daten-Repo
+
+`~/schulden-tracker/data` ist ein Symlink auf `~/schulden-tracker-data/data`. Die CLI
+schreibt also direkt in das Daten-Repo. Änderungen anschließend pushen:
+
+```bash
+git -C ~/schulden-tracker-data commit -am "ledger: …" && git -C ~/schulden-tracker-data push
+```
 
 ## Passwörter & Wiederherstellungscode
 
