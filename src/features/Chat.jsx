@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Drawer, Box, IconButton, TextField, Typography, Paper, Button, Avatar, Fade,
+  Drawer, Box, IconButton, TextField, Typography, Paper, Button, Avatar, Fade, CircularProgress,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
@@ -11,7 +11,7 @@ import MicRoundedIcon from "@mui/icons-material/MicRounded";
 import { useAppState } from "../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { aiChatStream, aiConfigured, downscale } from "../lib/ai";
+import { aiChatStream, aiConfigured, downscale, blobToWavB64, aiTranscribe } from "../lib/ai";
 import { netOf, amount, owedOf, monthOf, thisMonth } from "../lib/format";
 
 const TOOLS = [
@@ -54,9 +54,10 @@ export default function Chat({ open, onClose }) {
   const [busy, setBusy] = useState(false);
   const [attach, setAttach] = useState(null); // base64 (ohne Präfix)
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const fileRef = useRef();
   const camRef = useRef();
-  const recRef = useRef(null);
+  const mediaRef = useRef(null);
   const logRef = useRef();
   useEffect(() => { logRef.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [msgs, busy]);
 
@@ -117,16 +118,26 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
     if (f) setAttach(await downscale(f));
   };
 
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const toggleMic = () => {
-    if (!SR) { alert("Spracheingabe wird auf diesem Gerät nicht unterstützt."); return; }
-    if (recRef.current) { recRef.current.stop(); return; }
-    const rec = new SR();
-    rec.lang = "de-DE"; rec.interimResults = false; rec.maxAlternatives = 1;
-    rec.onresult = (e) => { const t = e.results[0][0].transcript; setInput((s) => (s ? s + " " : "") + t); };
-    rec.onend = () => { recRef.current = null; setListening(false); };
-    rec.onerror = () => { recRef.current = null; setListening(false); };
-    recRef.current = rec; setListening(true); rec.start();
+  const toggleMic = async () => {
+    if (mediaRef.current) { mediaRef.current.stop(); return; }        // läuft → stoppen
+    if (!aiConfigured(data)) { alert("Kein KI-Schlüssel — unter ⚙︎ eintragen."); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { alert("Kein Mikrofon-Zugriff."); return; }
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      mediaRef.current = null; setListening(false); setTranscribing(true);
+      try {
+        const wav = await blobToWavB64(new Blob(chunks));
+        const text = await aiTranscribe(data, wav);
+        if (text) setInput((s) => (s ? s + " " : "") + text);
+      } catch (e) { alert("Diktat-Fehler: " + e.message); }
+      setTranscribing(false);
+    };
+    mediaRef.current = rec; setListening(true); rec.start();
   };
 
   const send = async () => {
@@ -229,8 +240,10 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
           <IconButton size="small" title="Kamera" onClick={() => camRef.current.click()}><PhotoCameraRoundedIcon /></IconButton>
           <IconButton size="small" title="Datei" onClick={() => fileRef.current.click()}><AttachFileRoundedIcon /></IconButton>
-          {SR && <IconButton size="small" title="Diktat" onClick={toggleMic} color={listening ? "error" : "default"}><MicRoundedIcon /></IconButton>}
-          <TextField fullWidth size="small" variant="outlined" placeholder={listening ? "Ich höre zu…" : "Nachricht…"} value={input} multiline maxRows={4}
+          <IconButton size="small" title="Diktat" onClick={toggleMic} disabled={transcribing} color={listening ? "error" : "default"}>
+            {transcribing ? <CircularProgress size={20} /> : <MicRoundedIcon />}
+          </IconButton>
+          <TextField fullWidth size="small" variant="outlined" placeholder={listening ? "Ich höre zu… (Mic zum Stoppen)" : transcribing ? "Wird transkribiert…" : "Nachricht…"} value={input} multiline maxRows={4}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             sx={{ mx: 0.5, "& .MuiOutlinedInput-root": { borderRadius: 4, bgcolor: "action.hover", px: 0.5 } }} />

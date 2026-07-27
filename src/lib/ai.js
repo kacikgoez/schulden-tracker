@@ -132,6 +132,52 @@ export async function aiExtract(state, text, imageB64) {
   return msg.content || "";
 }
 
+// Aufnahme (Blob) -> 16-kHz-Mono-WAV als base64
+export async function blobToWavB64(blob) {
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = await ac.decodeAudioData(await blob.arrayBuffer());
+  const rate = 16000, len = Math.ceil(buf.duration * rate);
+  const oc = new OfflineAudioContext(1, len, rate);
+  const src = oc.createBufferSource(); src.buffer = buf; src.connect(oc.destination); src.start();
+  const out = (await oc.startRendering()).getChannelData(0);
+  const wav = new DataView(new ArrayBuffer(44 + out.length * 2));
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) wav.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); wav.setUint32(4, 36 + out.length * 2, true); w(8, "WAVEfmt ");
+  wav.setUint32(16, 16, true); wav.setUint16(20, 1, true); wav.setUint16(22, 1, true);
+  wav.setUint32(24, rate, true); wav.setUint32(28, rate * 2, true); wav.setUint16(32, 2, true);
+  wav.setUint16(34, 16, true); w(36, "data"); wav.setUint32(40, out.length * 2, true);
+  for (let i = 0; i < out.length; i++) wav.setInt16(44 + i * 2, Math.max(-1, Math.min(1, out[i])) * 0x7fff, true);
+  ac.close();
+  const bytes = new Uint8Array(wav.buffer); let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// Audio (WAV base64) -> Text per KI (Qwen3-ASR / Gemini / OpenAI-kompatibel)
+export async function aiTranscribe(state, wavB64) {
+  const c = aiConfig();
+  const model = c.amodel || (c.prov === "gemini" ? "gemini-2.5-flash" : "qwen/qwen3-asr-flash");
+  const prompt = "Transkribiere das folgende deutsche Diktat wörtlich. Antworte NUR mit dem Text.";
+  if (c.prov === "gemini") {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${aiKey(state)}`,
+      { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: "audio/wav", data: wavB64 } }] }] }) });
+    if (!r.ok) throw new Error("Audio-KI " + r.status);
+    const j = await r.json();
+    const u = j.usageMetadata || {}; await track(state, state.me.name, model, u.promptTokenCount || 0, u.candidatesTokenCount || 0);
+    return (j.candidates?.[0]?.content?.parts?.map((x) => x.text).join("") || "").trim();
+  }
+  const base = c.prov === "openai" ? "https://api.openai.com/v1" : c.prov === "openrouter" ? "https://openrouter.ai/api/v1" : (c.base || "https://openrouter.ai/api/v1");
+  const headers = { "content-type": "application/json", Authorization: "Bearer " + aiKey(state) };
+  if (base.includes("openrouter")) headers["X-Title"] = "Schulden-Tracker";
+  const r = await fetch(base.replace(/\/$/, "") + "/chat/completions", { method: "POST", headers,
+    body: JSON.stringify({ model, messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "input_audio", input_audio: { data: wavB64, format: "wav" } }] }] }) });
+  if (!r.ok) throw new Error("Audio-KI " + r.status + ": " + (await r.text()).slice(0, 160));
+  const j = await r.json();
+  await track(state, state.me.name, model, j.usage?.prompt_tokens || 0, j.usage?.completion_tokens || 0);
+  return (j.choices[0].message.content || "").trim();
+}
+
 // Bild verkleinern -> base64 (ohne Präfix)
 export function downscale(file, maxDim = 1400, q = 0.82) {
   return new Promise((res, rej) => {
