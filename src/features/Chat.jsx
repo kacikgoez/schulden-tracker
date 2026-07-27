@@ -138,14 +138,14 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
       PaperProps={{ sx: { width: { xs: "100%", sm: 460 }, height: "100dvh",
         display: "flex", flexDirection: "column", borderRadius: { xs: 0, sm: "24px 0 0 24px" } } }}>
 
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2.5, py: 2, borderBottom: 1, borderColor: "divider" }}>
-        <Avatar sx={{ bgcolor: "primary.main", width: 38, height: 38 }}><AutoAwesomeRoundedIcon fontSize="small" /></Avatar>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+        <Avatar sx={{ bgcolor: "primary.main", width: 36, height: 36, flexShrink: 0 }}><AutoAwesomeRoundedIcon fontSize="small" /></Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="h3" sx={{ lineHeight: 1.1 }}>Assistent</Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>handelt als {me} · {aiCostLine(data) || "bereit"}</Typography>
+          <Typography variant="h3" sx={{ lineHeight: 1.1 }} noWrap>Assistent</Typography>
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>handelt als {me}</Typography>
         </Box>
-        <Button size="small" onClick={() => { setMsgs([]); convo.current = []; }}>Neu</Button>
-        <IconButton onClick={onClose}><CloseRoundedIcon /></IconButton>
+        <Button size="small" sx={{ flexShrink: 0, minWidth: 0 }} onClick={() => { setMsgs([]); convo.current = []; }}>Neu</Button>
+        <IconButton size="small" sx={{ flexShrink: 0 }} onClick={onClose}><CloseRoundedIcon /></IconButton>
       </Box>
 
       <Box ref={logRef} sx={{ flex: 1, overflowY: "auto", px: 2.5, py: 3, display: "flex", flexDirection: "column", gap: 2 }}>
