@@ -5,10 +5,11 @@ import {
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import AddPhotoAlternateRoundedIcon from "@mui/icons-material/AddPhotoAlternateRounded";
 import { useAppState } from "../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { aiChatStream, aiConfigured, aiCostLine } from "../lib/ai";
+import { aiChatStream, aiConfigured, downscale } from "../lib/ai";
 import { netOf, amount, owedOf, monthOf, thisMonth } from "../lib/format";
 
 const TOOLS = [
@@ -49,6 +50,8 @@ export default function Chat({ open, onClose }) {
   const convo = useRef([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attach, setAttach] = useState(null); // base64 (ohne Präfix)
+  const fileRef = useRef();
   const logRef = useRef();
   useEffect(() => { logRef.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [msgs, busy]);
 
@@ -87,6 +90,10 @@ ARBEITSWEISE (wichtig):
 - Plane mehrere Schritte hintereinander (erst list_entries, dann edit_entry) ohne Zwischenfrage.
 - Rechne selbst (z. B. „mach 50:50" → split5050=true; „erhöh um 5€" → neuen Betrag berechnen).
 
+BILDER:
+- Der Nutzer kann Fotos (z. B. Kassenbelege) anhängen. Werte sie aus und lege die Buchungen
+  direkt per add_entry an (Kategorie passend wählen, Pfand nur bei Getränke, Tanken 50:50).
+
 REGELN:
 - Neue Einträge werden IMMER ${me} als Zahler gebucht → ${other} schuldet dann (ggf. die Hälfte).
 - Erfinde keine IDs. Kategorien: ${data.categories.join(", ")}. Heute: ${new Date().toISOString().slice(0, 10)}.
@@ -100,13 +107,24 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
     return c;
   });
 
+  const pickImage = async (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (f) setAttach(await downscale(f));
+  };
+
   const send = async () => {
-    const text = input.trim(); if (!text || busy) return;
+    const text = input.trim();
+    if ((!text && !attach) || busy) return;
     if (!aiConfigured(data)) { setMsgs((m) => [...m, { role: "bot", text: "Kein KI-Schlüssel — unter ⚙︎ eintragen." }]); return; }
-    setInput("");
-    setMsgs((m) => [...m, { role: "user", text }]);
+    const img = attach;
+    setInput(""); setAttach(null);
+    setMsgs((m) => [...m, { role: "user", text, image: img }]);
     if (!convo.current.length) convo.current.push({ role: "system", content: systemPrompt() });
-    convo.current.push({ role: "user", content: text });
+    const content = img
+      ? [{ type: "text", text: text || "Bild anbei — bitte auswerten und die Buchungen anlegen." },
+         { type: "image_url", image_url: { url: "data:image/jpeg;base64," + img } }]
+      : text;
+    convo.current.push({ role: "user", content });
     setBusy(true);
     let dirty = false;
     try {
@@ -169,20 +187,38 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
             border: m.role === "user" ? "none" : 1, borderColor: "divider",
             borderRadius: 3, borderBottomRightRadius: m.role === "user" ? 6 : 24, borderBottomLeftRadius: m.role === "user" ? 24 : 6,
             whiteSpace: "pre-wrap", lineHeight: 1.5, boxShadow: m.role === "user" ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
-          }}>{m.text}{m.streaming && <Box component="span" sx={{ ml: 0.3, animation: "blink 1s steps(2) infinite", "@keyframes blink": { "50%": { opacity: 0 } } }}>▍</Box>}</Paper>
+          }}>
+            {m.image && <Box component="img" src={"data:image/jpeg;base64," + m.image}
+              sx={{ display: "block", maxWidth: "100%", maxHeight: 200, borderRadius: 2, mb: m.text ? 1 : 0 }} />}
+            {m.text}
+            {m.streaming && <Box component="span" sx={{ ml: 0.3, animation: "blink 1s steps(2) infinite", "@keyframes blink": { "50%": { opacity: 0 } } }}>▍</Box>}
+          </Paper>
         ))}
         {waiting && <TypingDots />}
       </Box>
 
-      <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1, p: 2, borderTop: 1, borderColor: "divider" }}>
-        <TextField fullWidth size="small" placeholder={`Nachricht an den Assistenten…`} value={input} multiline maxRows={4}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4, bgcolor: "action.hover", px: 0.5 } }} />
-        <IconButton color="primary" onClick={send} disabled={busy || !input.trim()}
-          sx={{ bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground" } }}>
-          <ArrowUpwardRoundedIcon />
-        </IconButton>
+      <Box sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
+        {attach && (
+          <Box sx={{ position: "relative", width: 72, mb: 1 }}>
+            <Box component="img" src={"data:image/jpeg;base64," + attach} sx={{ width: 72, height: 72, objectFit: "cover", borderRadius: 2 }} />
+            <IconButton size="small" onClick={() => setAttach(null)}
+              sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", border: 1, borderColor: "divider", p: 0.3 }}>
+              <CloseRoundedIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Box>
+        )}
+        <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1 }}>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
+          <IconButton onClick={() => fileRef.current.click()} sx={{ flexShrink: 0 }}><AddPhotoAlternateRoundedIcon /></IconButton>
+          <TextField fullWidth size="small" placeholder="Nachricht oder Beleg-Foto…" value={input} multiline maxRows={4}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4, bgcolor: "action.hover", px: 0.5 } }} />
+          <IconButton color="primary" onClick={send} disabled={busy || (!input.trim() && !attach)}
+            sx={{ bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground" } }}>
+            <ArrowUpwardRoundedIcon />
+          </IconButton>
+        </Box>
       </Box>
     </Drawer>
   );
