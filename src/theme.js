@@ -70,13 +70,19 @@ export function buildTheme(mode) {
       },
       MuiIconButton: { styleOverrides: { root: { borderRadius: 10 } } },
       MuiChip: { styleOverrides: { root: { borderRadius: 8, fontWeight: 600, height: 24 }, sizeSmall: { height: 20 } } },
-      MuiOutlinedInput: {
+      // Eingaben als Unterstrich-Felder (keine Kästen)
+      MuiTextField: { defaultProps: { variant: "standard", size: "small", fullWidth: true } },
+      MuiInput: {
         styleOverrides: {
-          root: { borderRadius: 10, backgroundColor: dark ? "#1d1f23" : "#fbfbfc" },
-          notchedOutline: { borderColor: border },
+          root: { fontSize: 14.5 },
+          underline: {
+            "&:before": { borderBottomColor: border },
+            "&:hover:not(.Mui-disabled, .Mui-error):before": { borderBottomColor: textSecondary },
+          },
         },
       },
-      MuiTextField: { defaultProps: { size: "small", fullWidth: true } },
+      MuiInputLabel: { styleOverrides: { root: { fontSize: 13.5 } } },
+      MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 10 }, notchedOutline: { borderColor: border } } },
       MuiAppBar: {
         styleOverrides: {
           root: {

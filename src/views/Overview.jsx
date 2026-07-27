@@ -72,15 +72,21 @@ function Confirmations({ entries, me }) {
   );
 }
 
+function SectionHeader({ children }) {
+  return (
+    <Typography variant="caption" sx={{ display: "block", px: 0.5, mt: 2, mb: 1,
+      color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{children}</Typography>
+  );
+}
+
 function Trend({ entries }) {
   const ms = monthsList(entries);
   const nets = ms.map((m) => netOf(entries.filter((e) => monthOf(e) === m)));
   const max = Math.max(...nets.map(Math.abs), 0.01);
   return (
-    <Card>
-      <CardContent>
-        <Typography variant="h3" gutterBottom>Monatssalden</Typography>
-        <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1.25, height: 96, pt: 1 }}>
+    <Box>
+      <SectionHeader>Monatssalden</SectionHeader>
+      <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1.25, height: 96, pt: 1, px: 0.5 }}>
           {ms.map((m, i) => {
             const cur = m === thisMonth();
             return (
@@ -92,8 +98,7 @@ function Trend({ entries }) {
             );
           })}
         </Box>
-      </CardContent>
-    </Card>
+    </Box>
   );
 }
 
@@ -105,20 +110,18 @@ function Categories({ entries }) {
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const max = Math.max(...cats.map((c) => Math.abs(c[1])), 0.01);
   return (
-    <Card>
-      <CardContent>
-        <Typography variant="h3" gutterBottom>Kategorien · {mLabel(m)}</Typography>
-        {!cats.length && <Typography variant="body2" color="text.secondary">—</Typography>}
-        <Stack spacing={1}>
-          {cats.map(([name, val]) => (
-            <Box key={name} sx={{ display: "grid", gridTemplateColumns: "120px 1fr 76px", gap: 1, alignItems: "center" }}>
-              <Typography variant="body2" noWrap color="text.secondary">{name}</Typography>
-              <LinearProgress variant="determinate" value={(Math.abs(val) / max) * 100} sx={{ height: 10, borderRadius: 5 }} />
-              <Typography variant="body2" align="right">{eur(val)}</Typography>
-            </Box>
-          ))}
-        </Stack>
-      </CardContent>
-    </Card>
+    <Box sx={{ px: 0.5 }}>
+      <SectionHeader>Kategorien · {mLabel(m)}</SectionHeader>
+      {!cats.length && <Typography variant="body2" color="text.secondary">—</Typography>}
+      <Stack spacing={1.25}>
+        {cats.map(([name, val]) => (
+          <Box key={name} sx={{ display: "grid", gridTemplateColumns: "120px 1fr 76px", gap: 1.5, alignItems: "center" }}>
+            <Typography variant="body2" noWrap color="text.secondary">{name}</Typography>
+            <LinearProgress variant="determinate" value={(Math.abs(val) / max) * 100} sx={{ height: 8 }} />
+            <Typography variant="body2" align="right" fontWeight={600}>{eur(val)}</Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Box>
   );
 }

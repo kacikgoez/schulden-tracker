@@ -41,16 +41,17 @@ export default function Entries({ onEntry }) {
         <IconButton disabled={idx >= ms.length - 1} onClick={() => setCur(ms[idx + 1])}><ChevronRightRoundedIcon /></IconButton>
       </Box>
 
-      <Stack direction="row" spacing={1.5}>
-        <Card sx={{ flex: 1 }}><CardContent>
-          <Typography variant="caption" color="text.secondary">Dieser Monat</Typography>
-          <Typography variant="h3">{mNet >= 0 ? "+" : "−"} {eur(Math.abs(mNet))}</Typography>
-        </CardContent></Card>
-        <Card sx={{ flex: 1 }}><CardContent>
-          <Typography variant="caption" color="text.secondary">Bis dato</Typography>
-          <Typography variant="h3">{cum >= 0 ? "Z→K " : "K→Z "}{eur(Math.abs(cum))}</Typography>
-        </CardContent></Card>
-      </Stack>
+      <Box sx={{ display: "flex", gap: 3, px: 0.5 }}>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700 }}>Dieser Monat</Typography>
+          <Typography variant="h2">{mNet >= 0 ? "+" : "−"} {eur(Math.abs(mNet))}</Typography>
+        </Box>
+        <Divider orientation="vertical" flexItem />
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700 }}>Bis dato</Typography>
+          <Typography variant="h2">{cum >= 0 ? "Z→K " : "K→Z "}{eur(Math.abs(cum))}</Typography>
+        </Box>
+      </Box>
 
       <Card>
         {!month.length && <Typography sx={{ p: 2.5 }} color="text.secondary" variant="body2">Keine Einträge in diesem Monat.</Typography>}
