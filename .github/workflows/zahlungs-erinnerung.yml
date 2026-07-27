@@ -1,0 +1,26 @@
+# Monatliche Push-Erinnerung aufs Handy — kostenlos über ntfy.sh.
+# Einrichtung (einmalig):
+#   1. Repo-Secret NTFY_TOPIC anlegen: ein langer, zufälliger Topic-Name,
+#      z. B. schulden-kz-8f3k2m9x1q (der Name wirkt wie ein Passwort).
+#   2. Auf beiden Handys die ntfy-App installieren (iOS/Android, gratis)
+#      und genau dieses Topic abonnieren.
+# Die Nachricht ist bewusst generisch — die Action kann (und soll) die
+# verschlüsselten Daten nicht lesen.
+name: Zahlungs-Erinnerung
+on:
+  schedule:
+    - cron: "0 8 1 * *"   # am 1. jedes Monats, 08:00 UTC (~09/10 Uhr DE)
+  workflow_dispatch: {}
+jobs:
+  erinnern:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push an ntfy
+        run: |
+          if [ -z "${{ secrets.NTFY_TOPIC }}" ]; then
+            echo "Kein NTFY_TOPIC-Secret gesetzt — übersprungen."; exit 0; fi
+          curl -s \
+            -H "Title: Schulden-Tracker" \
+            -H "Tags: moneybag" \
+            -d "Monatsausgleich fällig — Saldo in der App prüfen und zahlen." \
+            "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"

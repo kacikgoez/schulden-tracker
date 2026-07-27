@@ -1,0 +1,7 @@
+data/
+.backups/
+.env
+*.plain.json
+SECRET*
+.DS_Store
+__pycache__/
