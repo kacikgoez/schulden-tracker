@@ -21,9 +21,6 @@ export default function Recurring({ onAdd, onEdit }) {
 
   return (
     <Stack spacing={1.5}>
-      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-        <Button variant="contained" onClick={onAdd}>＋ Abo</Button>
-      </Box>
       <Box sx={{ display: "flex", gap: 3, px: 0.5, alignItems: "flex-start" }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="caption" color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700 }}>Läuft aktuell</Typography>
