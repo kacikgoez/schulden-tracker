@@ -10,6 +10,18 @@ import { useAppState, useApiMutation } from "../lib/queries";
 import { api } from "../lib/api";
 import { eur, amount, owedOf, isPending, monthOf, mLabel, monthsList, netOf, thisMonth } from "../lib/format";
 
+// Farben für Tagesgruppen (lesbar in hell & dunkel)
+const DAY_COLORS = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#5ac8fa", "#ff375f", "#ffd60a", "#64d2ff"];
+function groupByDay(entries) {
+  const groups = [];
+  for (const e of entries) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === e.date) last.items.push(e);
+    else groups.push({ date: e.date, items: [e] });
+  }
+  return groups;
+}
+
 export default function Entries({ onEntry }) {
   const { data } = useAppState();
   const ms = data ? monthsList(data.entries) : [thisMonth()];
@@ -41,33 +53,43 @@ export default function Entries({ onEntry }) {
         </CardContent></Card>
       </Stack>
 
-      <Card><CardContent sx={{ p: 0 }}>
-        {!month.length && <Typography sx={{ p: 2 }} color="text.secondary" variant="body2">Keine Einträge in diesem Monat.</Typography>}
-        {month.map((e, i) => (
-          <Box key={e.id}>
-            {i > 0 && <Divider />}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 1.25 }}>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="body2" noWrap>
-                  {e.description}{" "}
-                  {isPending(e) && <Chip size="small" color="warning" label="wartet" sx={{ height: 18 }} />}
-                  {e.pay_status === "confirmed" && <Chip size="small" color="success" label="bestätigt" sx={{ height: 18 }} />}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {e.date.slice(8, 10)}.{e.date.slice(5, 7)}. · {e.category} · {e.payer} zahlte{e.split5050 ? " · 50:50" : ""}
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: "right" }}>
-                <Typography variant="body2" fontWeight={700}>{eur(owedOf(e))}</Typography>
-                <Typography variant="caption" color="text.secondary">{eur(amount(e))}</Typography>
-              </Box>
-              <IconButton size="small" onClick={() => onEntry(e)}><EditRoundedIcon fontSize="small" /></IconButton>
-              <IconButton size="small" onClick={() => window.confirm(`Löschen?\n${e.description}`) && del.mutate(e.id)}>
-                <DeleteOutlineRoundedIcon fontSize="small" />
-              </IconButton>
+      <Card><CardContent sx={{ p: 1.25, display: "flex", flexDirection: "column", gap: 1 }}>
+        {!month.length && <Typography sx={{ p: 1 }} color="text.secondary" variant="body2">Keine Einträge in diesem Monat.</Typography>}
+        {groupByDay(month).map((g, gi) => {
+          const color = DAY_COLORS[gi % DAY_COLORS.length];
+          return (
+            <Box key={g.date} sx={{ borderLeft: `4px solid ${color}`, borderRadius: 1, pl: 1.25 }}>
+              <Typography variant="caption" sx={{ color, fontWeight: 700, display: "block", pt: 0.25 }}>
+                {new Date(g.date).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })}
+              </Typography>
+              {g.items.map((e, i) => (
+                <Box key={e.id}>
+                  {i > 0 && <Divider sx={{ opacity: 0.5 }} />}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 1 }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" noWrap>
+                        {e.description}{" "}
+                        {isPending(e) && <Chip size="small" color="warning" label="wartet" sx={{ height: 18 }} />}
+                        {e.pay_status === "confirmed" && <Chip size="small" color="success" label="bestätigt" sx={{ height: 18 }} />}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {e.category} · {e.payer} zahlte{e.split5050 ? " · 50:50" : ""}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ textAlign: "right" }}>
+                      <Typography variant="body2" fontWeight={700}>{eur(owedOf(e))}</Typography>
+                      <Typography variant="caption" color="text.secondary">{eur(amount(e))}</Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => onEntry(e)}><EditRoundedIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => window.confirm(`Löschen?\n${e.description}`) && del.mutate(e.id)}>
+                      <DeleteOutlineRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </Box>
+              ))}
             </Box>
-          </Box>
-        ))}
+          );
+        })}
       </CardContent></Card>
     </Stack>
   );
