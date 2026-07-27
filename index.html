@@ -241,6 +241,10 @@ dialog .foot{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
 .subcard .btn{width:100%;justify-content:center;text-align:center}
 .codebox{margin-top:8px;padding:12px;background:var(--card-solid);border:.5px solid var(--stroke);
   border-radius:12px;font-variant-numeric:tabular-nums;word-break:break-all;font-size:13px;line-height:1.6}
+.cbubble{max-width:82%;padding:10px 13px;border-radius:16px;font-size:14.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.cbubble.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+.cbubble.bot{align-self:flex-start;background:var(--fill);color:var(--ink);border-bottom-left-radius:5px}
+.ctool{align-self:center;font-size:12px;color:var(--muted);background:var(--fill);border-radius:999px;padding:3px 11px;max-width:90%;text-align:center}
 .proposal{background:var(--fill);border:none;border-radius:16px;padding:12px;margin:8px 0;
   display:flex;gap:10px;align-items:flex-start}
 .proposal input[type=checkbox]{width:auto;margin-top:4px;accent-color:var(--accent)}
@@ -306,6 +310,7 @@ input[type=checkbox]{accent-color:var(--accent)}
       <h1>Schulden</h1>
     </div>
     <div class="hbtns">
+      <button class="hbtn" id="chatbtn" title="KI-Assistent">💬</button>
       <button class="hbtn" id="themebtn" title="Hell/Dunkel">◐</button>
       <button class="hbtn" id="setupbtn" title="Einstellungen">⚙︎</button>
     </div>
@@ -382,6 +387,21 @@ input[type=checkbox]{accent-color:var(--accent)}
         <div><div class="tt">Von Hand</div><div class="ts">Betrag selbst eintippen</div></div></button>
       <button class="tile" id="tileRecurring"><div class="ic">🔁</div>
         <div><div class="tt">Abo / Fixkosten</div><div class="ts">Wiederkehrt jeden Monat automatisch</div></div></button>
+    </div>
+  </dialog>
+
+  <dialog id="chatdlg" style="max-width:520px;height:86vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <div class="sheet-head" style="padding:16px 18px 12px;margin:0;border-bottom:.5px solid var(--hairline)">
+      <div><h3 style="margin:0">💬 Assistent</h3><div class="note" id="chatrole"></div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="chatclear" style="padding:6px 12px">Neu</button>
+        <button class="xclose" id="chatx" aria-label="Schließen">✕</button></div>
+    </div>
+    <div id="chatlog" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px"></div>
+    <div style="display:flex;gap:8px;padding:12px 14px;border-top:.5px solid var(--hairline)">
+      <input id="chatinput" placeholder="z. B. „trag 12,50 € Tanken ein" oder „was schuldet mir Zeynel?"
+        style="flex:1;background:var(--fill);border:none;border-radius:999px;padding:12px 16px;font-size:16px;outline:none">
+      <button class="btn primary" id="chatsend" style="border-radius:50%;width:44px;padding:0">➤</button>
     </div>
   </dialog>
 
@@ -1586,6 +1606,126 @@ $("recform").addEventListener("submit", async ev => {
   await loadState(); renderRecurring(); render();
   show("recurring");
 });
+
+/* ================= KI-Assistent (agentisch, mit Tools) ================= */
+let CHATMSGS = [], CHATDIRTY = false;
+const CHAT_TOOLS = [
+  {type:"function", function:{name:"get_balance", description:"Aktuellen Gesamt-Saldo abrufen (wer schuldet wem wie viel).", parameters:{type:"object",properties:{}}}},
+  {type:"function", function:{name:"list_entries", description:"Einträge eines Monats mit IDs auflisten.", parameters:{type:"object",properties:{month:{type:"string",description:"JJJJ-MM, leer = aktueller Monat"}}}}},
+  {type:"function", function:{name:"add_entry", description:"Neue Ausgabe anlegen. Der Zahler ist automatisch der angemeldete Nutzer; die andere Person schuldet.", parameters:{type:"object",properties:{
+    date:{type:"string",description:"JJJJ-MM-TT, leer = heute"}, category:{type:"string"}, description:{type:"string"},
+    amount:{type:"number",description:"Einzelpreis in Euro"}, qty:{type:"integer"}, split5050:{type:"boolean",description:"true = 50:50 teilen"},
+    pfand_qty:{type:"integer",description:"nur bei Kategorie Getränke"}, pfand_type:{type:"string",enum:["Einweg","Mehrweg","Bierflasche"]}}, required:["category","description","amount"]}}},
+  {type:"function", function:{name:"edit_entry", description:"Bestehenden Eintrag ändern (per ID aus list_entries).", parameters:{type:"object",properties:{
+    id:{type:"string"}, date:{type:"string"}, category:{type:"string"}, description:{type:"string"}, amount:{type:"number"}, qty:{type:"integer"}, split5050:{type:"boolean"}}, required:["id"]}}},
+  {type:"function", function:{name:"delete_entry", description:"Eintrag löschen (per ID).", parameters:{type:"object",properties:{id:{type:"string"}}, required:["id"]}}},
+  {type:"function", function:{name:"list_recurring", description:"Abos/Fixkosten auflisten.", parameters:{type:"object",properties:{}}}},
+  {type:"function", function:{name:"add_recurring", description:"Neues Abo/Fixkosten (monatlich automatisch verbucht).", parameters:{type:"object",properties:{
+    category:{type:"string"}, description:{type:"string"}, amount:{type:"number",description:"Betrag pro Monat"},
+    split5050:{type:"boolean"}, day:{type:"integer",description:"Abbuchungstag 1-28"}, active_from:{type:"string",description:"JJJJ-MM-TT, leer=heute"}, active_until:{type:"string"}}, required:["category","description","amount"]}}},
+  {type:"function", function:{name:"delete_recurring", description:"Abo löschen (per ID).", parameters:{type:"object",properties:{id:{type:"string"}}, required:["id"]}}},
+  {type:"function", function:{name:"report_payment", description:"Eine Ausgleichszahlung melden (die andere Person bestätigt).", parameters:{type:"object",properties:{amount:{type:"number"}, method:{type:"string",enum:["Bar","Überweisung"]}}, required:["amount"]}}}
+];
+async function execTool(name, a){
+  const today = new Date().toISOString().slice(0,10);
+  if(name==="get_balance"){ const t=Math.round(netOf(DATA.entries)*100)/100;
+    return {saldo_eur:Math.abs(t), richtung: t>=0?"Zeynel schuldet Kawa":(t<0?"Kawa schuldet Zeynel":"ausgeglichen")}; }
+  if(name==="list_entries"){ const mo=a.month||new Date().toISOString().slice(0,7);
+    return DATA.entries.filter(e=>monthOf(e)===mo).map(e=>({id:e.id,date:e.date,category:e.category,description:e.description,
+      payer:e.payer,betrag:amount(e),split5050:e.split5050,schuldet:e.payer==="Kawa"?"Zeynel":"Kawa",anteil:owedOf(e),status:e.pay_status||"normal"})); }
+  if(name==="add_entry"){ const e={date:a.date||today,category:a.category,description:a.description,unit_price:a.amount,split5050:!!a.split5050};
+    if(a.qty)e.qty=a.qty; if(a.pfand_qty){e.pfand_qty=a.pfand_qty;e.pfand_type=a.pfand_type||"Einweg";}
+    const r=await api("/entry","POST",e); CHATDIRTY=true; await loadState(); return {ok:true,id:r.entry.id}; }
+  if(name==="edit_entry"){ const cur=DATA.entries.find(x=>x.id===a.id); if(!cur)return{error:"Eintrag nicht gefunden"};
+    const e={id:a.id,date:a.date||cur.date,category:a.category||cur.category,description:a.description||cur.description,
+      unit_price:a.amount!=null?a.amount:cur.unit_price,split5050:a.split5050!=null?a.split5050:cur.split5050};
+    const q=a.qty!=null?a.qty:cur.qty; if(q)e.qty=q;
+    await api("/entry","POST",e); CHATDIRTY=true; await loadState(); return {ok:true}; }
+  if(name==="delete_entry"){ await api("/entry/"+a.id,"DELETE"); CHATDIRTY=true; await loadState(); return {ok:true}; }
+  if(name==="list_recurring"){ return (DATA.recurring||[]).map(r=>({id:r.id,description:r.description,category:r.category,
+    amount:r.amount,split5050:r.split5050,payer:r.payer,active_from:r.active_from,active_until:r.active_until})); }
+  if(name==="add_recurring"){ const r={category:a.category,description:a.description,amount:a.amount,split5050:!!a.split5050,
+    day:a.day||1,active_from:a.active_from||today,active_until:a.active_until||null};
+    const res=await api("/recurring","POST",r); CHATDIRTY=true; await loadState(); return {ok:true,id:res.id}; }
+  if(name==="delete_recurring"){ await api("/recurring/"+a.id,"DELETE"); CHATDIRTY=true; await loadState(); return {ok:true}; }
+  if(name==="report_payment"){ await api("/pay","POST",{amount:a.amount,method:a.method||"Bar"}); CHATDIRTY=true; await loadState(); return {ok:true}; }
+  return {error:"unbekanntes Tool"};
+}
+function chatSystemPrompt(){
+  const other = (USERS.map(u=>u.name).find(n=>n!==actor())) || "die andere Person";
+  return `Du bist der Assistent im Schulden-Tracker und handelst in der Rolle von ${actor()}. `+
+    `Wichtige Regel: Neue Einträge werden IMMER ${actor()} als Zahler zugeordnet — das heißt ${other} schuldet dann den (ggf. hälftigen) Betrag. `+
+    `Nutze die Tools, um Ausgaben, Abos und Zahlungen zu verwalten oder Fragen zum Saldo zu beantworten. `+
+    `Erfinde keine IDs — hole sie via list_entries. Frage bei Unklarheit kurz nach, statt zu raten. `+
+    `Erlaubte Kategorien: ${DATA.categories.join(", ")}. Personen: ${USERS.map(u=>u.name).join(", ")}. Heute: ${new Date().toISOString().slice(0,10)}. `+
+    `Antworte knapp auf Deutsch und bestätige, was du getan hast (mit Beträgen).`;
+}
+function chatBubble(role, html){
+  const d=document.createElement("div");
+  d.className = role==="tool" ? "ctool" : ("cbubble " + (role==="user"?"user":"bot"));
+  d.innerHTML = html; $("chatlog").appendChild(d); $("chatlog").scrollTop = $("chatlog").scrollHeight; return d;
+}
+const TOOL_LABEL = {add_entry:"➕ Eintrag angelegt", edit_entry:"✎ Eintrag geändert", delete_entry:"🗑 Eintrag gelöscht",
+  add_recurring:"🔁 Abo angelegt", delete_recurring:"🗑 Abo gelöscht", report_payment:"💸 Zahlung gemeldet",
+  get_balance:"📊 Saldo geprüft", list_entries:"🔎 Einträge gelesen", list_recurring:"🔎 Abos gelesen"};
+async function chatCompletion(messages){
+  const c=cfg();
+  const base = c.prov==="gemini" ? "https://generativelanguage.googleapis.com/v1beta/openai"
+    : c.prov==="openai" ? "https://api.openai.com/v1"
+    : c.prov==="openrouter" ? "https://openrouter.ai/api/v1" : (c.base||"https://openrouter.ai/api/v1");
+  const model = c.model || (c.prov==="openai"?"gpt-4o-mini":"qwen/qwen3-vl-235b-a22b-instruct");
+  const headers = {"content-type":"application/json", Authorization:"Bearer "+aiKey()};
+  if(base.includes("openrouter")) headers["X-Title"]="Schulden-Tracker";
+  const r = await fetch(base.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers,
+    body:JSON.stringify({model, messages, tools:CHAT_TOOLS, tool_choice:"auto", temperature:0.2})});
+  if(!r.ok) throw new Error("KI "+r.status+": "+(await r.text()).slice(0,180));
+  const j = await r.json();
+  trackUsage(model, j.usage?.prompt_tokens||0, j.usage?.completion_tokens||0);
+  return j.choices[0].message;
+}
+async function chatSend(){
+  const text = $("chatinput").value.trim(); if(!text) return;
+  if(!aiConfigured()){ chatBubble("bot","Kein KI-Schlüssel hinterlegt — unter ⚙︎ eintragen."); return; }
+  $("chatinput").value="";
+  chatBubble("user", esc(text));
+  if(!CHATMSGS.length) CHATMSGS.push({role:"system", content:chatSystemPrompt()});
+  CHATMSGS.push({role:"user", content:text});
+  const busy = chatBubble("bot","<span class='spin'></span>");
+  try{
+    let rounds=0;
+    while(rounds++ < 8){
+      const msg = await chatCompletion(CHATMSGS);
+      CHATMSGS.push(msg);
+      if(msg.tool_calls && msg.tool_calls.length){
+        for(const tc of msg.tool_calls){
+          let args={}; try{ args=JSON.parse(tc.function.arguments||"{}"); }catch(_e){}
+          let result; try{ result = await execTool(tc.function.name, args); }catch(e){ result={error:e.message}; }
+          const lbl = TOOL_LABEL[tc.function.name] || ("🔧 "+tc.function.name);
+          chatBubble("tool", esc(lbl + (result&&result.error?` — Fehler: ${result.error}`:"")));
+          CHATMSGS.push({role:"tool", tool_call_id:tc.id, content:JSON.stringify(result)});
+        }
+        continue;
+      }
+      busy.remove();
+      chatBubble("bot", esc(msg.content||"(fertig)"));
+      break;
+    }
+    if(rounds>=8){ busy.remove(); chatBubble("bot","Abgebrochen (zu viele Schritte)."); }
+  }catch(e){ busy.remove(); chatBubble("bot","Fehler: "+esc(e.message)); }
+  if(CHATDIRTY){ CHATDIRTY=false; render(); if($("viewRecurring").style.display!=="none") renderRecurring(); }
+}
+$("chatbtn").onclick = () => {
+  $("chatrole").textContent = "handelt als " + actor() + " · " + (aiCostLine() || "KI-Kosten: —");
+  if(!$("chatlog").children.length){
+    const other = esc((USERS.map(u=>u.name).find(n=>n!==actor())||""));
+    chatBubble("bot", "Hi " + esc(actor()) + "! Sag mir z. B. &bdquo;trag 12,50 &euro; Tanken ein, 50:50&ldquo; oder &bdquo;was schuldet mir " + other + "?&ldquo; &mdash; ich erledige das direkt.");
+  }
+  $("chatdlg").showModal(); setTimeout(()=>$("chatinput").focus(),50);
+};
+$("chatx").onclick = () => $("chatdlg").close();
+$("chatclear").onclick = () => { CHATMSGS=[]; $("chatlog").innerHTML=""; };
+$("chatsend").onclick = chatSend;
+$("chatinput").addEventListener("keydown", e => { if(e.key==="Enter") chatSend(); });
 
 $("prev").onclick = () => { const ms = monthsList(); CUR = ms[ms.indexOf(CUR)-1]; render(); };
 $("next").onclick = () => { const ms = monthsList(); CUR = ms[ms.indexOf(CUR)+1]; render(); };
