@@ -50,7 +50,29 @@ ledger.py         ←  CLI: balance / show / add / rm / json … (nutzt den DEK 
 - **Zwei Schreibwege, ein Format:** Browser (verschlüsselt lokal, committet per
   GitHub-API) und CLI (entschlüsselt lokal, committet per `git push`).
 
-## Hosting (eingerichtet)
+## Hosting — alles auf Cloudflare (kostenlos, empfohlen)
+
+Eine echte Web-App auf einer Domain: Cloudflare **Pages** (statische App) +
+**Functions** (`functions/api/…` = die Speicher-API) + **KV** (Datenspeicher).
+Free-Tier: 100k Anfragen/Tag → für zwei Personen dauerhaft **0 €/Monat**. Kein
+Token, kein CORS, kein zweites Repo — öffnen, Passwort, fertig.
+
+**Deploy (einmalig):**
+```bash
+npx wrangler login          # einmal im Terminal, Browser bestätigen
+cd ~/schulden-tracker
+./deploy.sh                 # legt KV an, säet Daten+Auth, deployt Pages
+```
+`deploy.sh` gibt am Ende die `…pages.dev`-URL aus. Auf jedem Gerät nur diese URL
+öffnen und mit dem eigenen Passwort einloggen.
+
+Sicherheit: Der Login-Nachweis ist `hex(SHA-256(DEK))`; der Server speichert nur
+dessen Hash. `keys` (PBKDF2-geschützt) ist ohne Auth lesbar, Ledger und Belege nur
+mit Login. Alles bleibt Ende-zu-Ende-verschlüsselt — der Server sieht nur Ciphertext.
+
+---
+
+### Alternative: GitHub Pages (bereits eingerichtet)
 
 Live: **https://kacikgoez.github.io/schulden-tracker/**
 
