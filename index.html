@@ -258,6 +258,21 @@ dialog .foot{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
 .setgrp .subcard input,.setgrp .subcard select{background:var(--fill)}
 .setup-foot{position:sticky;bottom:-22px;background:var(--card-solid);margin:14px -20px -22px;padding:14px 20px 22px;
   border-top:.5px solid var(--hairline)}
+/* Chat als rechtes Seitenpanel */
+#chatdlg{padding:0;overflow:hidden;border:none;max-width:none;
+  width:min(440px,96vw);height:100dvh;max-height:100dvh;margin:0 0 0 auto;
+  border-radius:22px 0 0 22px;box-shadow:-16px 0 50px rgba(0,0,0,.4)}
+#chatdlg[open]{display:flex;flex-direction:column;animation:slideIn .22s ease}
+@keyframes slideIn{from{transform:translateX(40px);opacity:.4}to{transform:none;opacity:1}}
+@media(max-width:520px){#chatdlg{width:100vw;border-radius:0}}
+/* Schwebender Chat-Button */
+#chatfab{position:fixed;right:16px;z-index:25;
+  bottom:calc(96px + env(safe-area-inset-bottom));
+  width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;font-size:24px;
+  background:linear-gradient(180deg,var(--accent),var(--accent-deep));color:#fff;
+  box-shadow:0 8px 22px color-mix(in srgb,var(--accent) 45%,transparent);
+  display:grid;place-items:center;transition:transform .15s ease}
+#chatfab:active{transform:scale(.9)}
 .proposal{background:var(--fill);border:none;border-radius:16px;padding:12px;margin:8px 0;
   display:flex;gap:10px;align-items:flex-start}
 .proposal input[type=checkbox]{width:auto;margin-top:4px;accent-color:var(--accent)}
@@ -403,7 +418,7 @@ input[type=checkbox]{accent-color:var(--accent)}
     </div>
   </dialog>
 
-  <dialog id="chatdlg" style="max-width:520px;height:86vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+  <dialog id="chatdlg">
     <div class="sheet-head" style="padding:16px 18px 12px;margin:0;border-bottom:.5px solid var(--hairline)">
       <div><h3 style="margin:0">💬 Assistent</h3><div class="note" id="chatrole"></div></div>
       <div style="display:flex;gap:8px">
@@ -412,7 +427,7 @@ input[type=checkbox]{accent-color:var(--accent)}
     </div>
     <div id="chatlog" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px"></div>
     <div style="display:flex;gap:8px;padding:12px 14px;border-top:.5px solid var(--hairline)">
-      <input id="chatinput" placeholder="z. B. „trag 12,50 € Tanken ein" oder „was schuldet mir Zeynel?"
+      <input id="chatinput" placeholder="z. B. 12,50 € Tanken eintragen …"
         style="flex:1;background:var(--fill);border:none;border-radius:999px;padding:12px 16px;font-size:16px;outline:none">
       <button class="btn primary" id="chatsend" style="border-radius:50%;width:44px;padding:0">➤</button>
     </div>
@@ -543,6 +558,7 @@ input[type=checkbox]{accent-color:var(--accent)}
     <button class="dockitem" id="tabRecurring"><span>🔁</span>Abos</button>
     <button class="dockitem" id="tabHist"><span>↺</span>Verlauf</button>
   </nav>
+  <button id="chatfab" title="KI-Assistent">💬</button>
 </div>
 
 <button id="scanbtn" hidden></button>
@@ -1734,14 +1750,16 @@ async function chatSend(){
   }catch(e){ busy.remove(); chatBubble("bot","Fehler: "+esc(e.message)); }
   if(CHATDIRTY){ CHATDIRTY=false; render(); if($("viewRecurring").style.display!=="none") renderRecurring(); }
 }
-$("chatbtn").onclick = () => {
+function openChat(){
   $("chatrole").textContent = "handelt als " + actor() + " · " + (aiCostLine() || "KI-Kosten: —");
   if(!$("chatlog").children.length){
     const other = esc((USERS.map(u=>u.name).find(n=>n!==actor())||""));
     chatBubble("bot", "Hi " + esc(actor()) + "! Sag mir z. B. &bdquo;trag 12,50 &euro; Tanken ein, 50:50&ldquo; oder &bdquo;was schuldet mir " + other + "?&ldquo; &mdash; ich erledige das direkt.");
   }
   $("chatdlg").showModal(); setTimeout(()=>$("chatinput").focus(),50);
-};
+}
+$("chatbtn").onclick = openChat;
+$("chatfab").onclick = openChat;
 $("chatx").onclick = () => $("chatdlg").close();
 $("chatclear").onclick = () => { CHATMSGS=[]; $("chatlog").innerHTML=""; };
 $("chatsend").onclick = chatSend;
