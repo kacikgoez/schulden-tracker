@@ -111,10 +111,9 @@ export default function Settings({ open, onClose }) {
             <TextField label="Modell" value={ai.model} onChange={(e) => setAi({ ...ai, model: e.target.value })} placeholder="qwen/qwen3-vl-235b-a22b-instruct" />
             {ai.prov === "custom" && <TextField label="Base-URL" value={ai.base} onChange={(e) => setAi({ ...ai, base: e.target.value })} />}
             <TextField label="API-Schlüssel" type="password" value={aiKey} onChange={(e) => setAiKey(e.target.value)} placeholder="wird verschlüsselt geteilt" />
-            <TextField select label="Diktat-Engine" value={ai.dictate} onChange={(e) => setAi({ ...ai, dictate: e.target.value })}>
-              <MenuItem value="browser">Browser-Spracherkennung (kostenlos)</MenuItem>
-              <MenuItem value="ki">KI-Audio (versteht Deutsch)</MenuItem>
-            </TextField>
+            <TextField label="Audio-Modell (Diktat)" value={ai.amodel} onChange={(e) => setAi({ ...ai, amodel: e.target.value })}
+              placeholder="google/gemini-2.5-flash"
+              helperText="cheap & zuverlässig für Deutsch; leer = Standard" />
             {aiCostLine(data) && <Typography variant="caption" color="text.secondary">{aiCostLine(data)}</Typography>}
           </Group>
 

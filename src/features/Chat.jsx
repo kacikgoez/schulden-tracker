@@ -143,8 +143,8 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
       mediaRef.current = null; setListening(false); setTranscribing(true);
       try {
         const wav = await blobToWavB64(new Blob(chunks));
-        const text = await aiTranscribe(data, wav);
-        if (text) setInput((s) => (s ? s + " " : "") + text);
+        setInput((s) => (s ? s + " " : ""));                       // Trenner setzen
+        await aiTranscribe(data, wav, (delta) => setInput((s) => s + delta)); // live ins Feld
       } catch (e) { alert("Diktat-Fehler: " + e.message); }
       setTranscribing(false);
     };

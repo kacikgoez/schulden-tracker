@@ -153,29 +153,51 @@ export async function blobToWavB64(blob) {
   return btoa(s);
 }
 
-// Audio (WAV base64) -> Text per KI (Qwen3-ASR / Gemini / OpenAI-kompatibel)
-export async function aiTranscribe(state, wavB64) {
+// Standard-Audiomodell je Anbieter (audio-fähig)
+export const defaultAudioModel = (prov) =>
+  prov === "gemini" ? "gemini-2.5-flash"
+    : prov === "openai" ? "gpt-4o-audio-preview"
+    : "google/gemini-2.5-flash"; // OpenRouter/kompatibel
+
+// Audio (WAV base64) -> Text per KI. onDelta(textStück) streamt live ins Eingabefeld.
+export async function aiTranscribe(state, wavB64, onDelta) {
   const c = aiConfig();
-  const model = c.amodel || (c.prov === "gemini" ? "gemini-2.5-flash" : "qwen/qwen3-asr-flash");
-  const prompt = "Transkribiere das folgende deutsche Diktat wörtlich. Antworte NUR mit dem Text.";
+  const model = c.amodel || defaultAudioModel(c.prov);
+  const prompt = "Transkribiere das folgende deutsche Diktat wörtlich. Antworte NUR mit dem reinen Text, ohne Anführungszeichen.";
+
   if (c.prov === "gemini") {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${aiKey(state)}`,
       { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: "audio/wav", data: wavB64 } }] }] }) });
-    if (!r.ok) throw new Error("Audio-KI " + r.status);
+    if (!r.ok) throw new Error("Audio-KI " + r.status + ": " + (await r.text()).slice(0, 180));
     const j = await r.json();
     const u = j.usageMetadata || {}; await track(state, state.me.name, model, u.promptTokenCount || 0, u.candidatesTokenCount || 0);
-    return (j.candidates?.[0]?.content?.parts?.map((x) => x.text).join("") || "").trim();
+    const t = (j.candidates?.[0]?.content?.parts?.map((x) => x.text).join("") || "").trim();
+    onDelta?.(t); return t;
   }
+
   const base = c.prov === "openai" ? "https://api.openai.com/v1" : c.prov === "openrouter" ? "https://openrouter.ai/api/v1" : (c.base || "https://openrouter.ai/api/v1");
   const headers = { "content-type": "application/json", Authorization: "Bearer " + aiKey(state) };
   if (base.includes("openrouter")) headers["X-Title"] = "Schulden-Tracker";
   const r = await fetch(base.replace(/\/$/, "") + "/chat/completions", { method: "POST", headers,
-    body: JSON.stringify({ model, messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "input_audio", input_audio: { data: wavB64, format: "wav" } }] }] }) });
-  if (!r.ok) throw new Error("Audio-KI " + r.status + ": " + (await r.text()).slice(0, 160));
-  const j = await r.json();
-  await track(state, state.me.name, model, j.usage?.prompt_tokens || 0, j.usage?.completion_tokens || 0);
-  return (j.choices[0].message.content || "").trim();
+    body: JSON.stringify({ model, messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "input_audio", input_audio: { data: wavB64, format: "wav" } }] }], stream: true, stream_options: { include_usage: true } }) });
+  if (!r.ok) throw new Error("Audio-KI " + r.status + ": " + (await r.text()).slice(0, 180));
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", content = "", usage = null;
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true }); let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const p = line.slice(5).trim(); if (p === "[DONE]") continue;
+      let j; try { j = JSON.parse(p); } catch { continue; }
+      if (j.usage) usage = j.usage;
+      const d = j.choices?.[0]?.delta?.content; if (d) { content += d; onDelta?.(d); }
+    }
+  }
+  if (usage) await track(state, state.me.name, model, usage.prompt_tokens || 0, usage.completion_tokens || 0);
+  return content.trim();
 }
 
 // Bild verkleinern -> base64 (ohne Präfix)
