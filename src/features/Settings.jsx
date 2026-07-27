@@ -82,8 +82,6 @@ export default function Settings({ open, onClose }) {
             <TextField label={`Passwort für ${other} setzen`} type="password" value={otherPw} onChange={(e) => setOtherPw(e.target.value)}
               InputProps={{ endAdornment: pwBtn(() => adminPw.mutate({ name: other, pw: otherPw }, { onSuccess: () => { setOtherPw(""); setToast(`Passwort für ${other} gesetzt.`); } }), otherPw.length < 4 || adminPw.isPending) }} />
           )}
-          <Divider />
-          <Button color="error" startIcon={<LogoutRoundedIcon />} sx={{ alignSelf: "flex-start" }} onClick={() => logout.mutate()}>Abmelden</Button>
         </Stack>
       </>
     ),
@@ -140,15 +138,23 @@ export default function Settings({ open, onClose }) {
 
         <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* Seitennavigation */}
-          <List sx={{ width: { xs: 116, sm: 210 }, flexShrink: 0, borderRight: 1, borderColor: "divider", py: 1, overflowY: "auto" }}>
-            {SECTIONS.map((s) => (
-              <ListItemButton key={s.id} selected={sel === s.id} onClick={() => setSel(s.id)}
-                sx={{ mx: 1, mb: 0.5, borderRadius: 2, "&.Mui-selected": { bgcolor: "action.selected" } }}>
-                <ListItemIcon sx={{ minWidth: 36, color: sel === s.id ? "primary.main" : "text.secondary" }}>{s.icon}</ListItemIcon>
-                <ListItemText primary={s.label} primaryTypographyProps={{ fontSize: 14, fontWeight: sel === s.id ? 700 : 500, noWrap: true }} />
-              </ListItemButton>
-            ))}
-          </List>
+          <Box sx={{ width: { xs: 116, sm: 210 }, flexShrink: 0, borderRight: 1, borderColor: "divider",
+            display: "flex", flexDirection: "column", py: 1 }}>
+            <List sx={{ flex: 1, overflowY: "auto", py: 0 }}>
+              {SECTIONS.map((s) => (
+                <ListItemButton key={s.id} selected={sel === s.id} onClick={() => setSel(s.id)}
+                  sx={{ mx: 1, mb: 0.5, borderRadius: 2, "&.Mui-selected": { bgcolor: "action.selected" } }}>
+                  <ListItemIcon sx={{ minWidth: 36, color: sel === s.id ? "primary.main" : "text.secondary" }}>{s.icon}</ListItemIcon>
+                  <ListItemText primary={s.label} primaryTypographyProps={{ fontSize: 14, fontWeight: sel === s.id ? 700 : 500, noWrap: true }} />
+                </ListItemButton>
+              ))}
+            </List>
+            <Divider sx={{ mx: 1 }} />
+            <ListItemButton onClick={() => logout.mutate()} sx={{ mx: 1, mt: 1, borderRadius: 2, color: "error.main" }}>
+              <ListItemIcon sx={{ minWidth: 36, color: "error.main" }}><LogoutRoundedIcon /></ListItemIcon>
+              <ListItemText primary="Abmelden" primaryTypographyProps={{ fontSize: 14, fontWeight: 600, noWrap: true }} />
+            </ListItemButton>
+          </Box>
 
           {/* Inhalt */}
           <Box sx={{ flex: 1, minWidth: 0, overflowY: "auto", p: { xs: 2.5, sm: 3.5 } }}>
