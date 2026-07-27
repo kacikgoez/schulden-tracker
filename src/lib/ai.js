@@ -74,6 +74,56 @@ export async function aiChat(state, messages, { tools } = {}) {
   return j.choices[0].message;
 }
 
+// Streaming-Chat (SSE). onDelta(textStück) wird laufend aufgerufen.
+// Gibt die finale Nachricht {content, tool_calls?} zurück und trackt Kosten (falls usage geliefert).
+export async function aiChatStream(state, messages, { tools, onDelta } = {}) {
+  const c = aiConfig();
+  const base = chatBase(c), model = chatModel(c);
+  const headers = { "content-type": "application/json", Authorization: "Bearer " + aiKey(state) };
+  if (base.includes("openrouter")) headers["X-Title"] = "Schulden-Tracker";
+  const body = { model, messages, temperature: 0.2, stream: true, stream_options: { include_usage: true } };
+  if (tools) { body.tools = tools; body.tool_choice = "auto"; }
+  const r = await fetch(base.replace(/\/$/, "") + "/chat/completions", { method: "POST", headers, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error("KI " + r.status + ": " + (await r.text()).slice(0, 180));
+
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", content = "", usage = null;
+  const toolCalls = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      let j; try { j = JSON.parse(payload); } catch { continue; }
+      if (j.usage) usage = j.usage;
+      const d = j.choices?.[0]?.delta;
+      if (!d) continue;
+      if (d.content) { content += d.content; onDelta?.(d.content); }
+      if (d.tool_calls) {
+        for (const tc of d.tool_calls) {
+          const i = tc.index ?? 0;
+          toolCalls[i] ||= { id: tc.id, type: "function", function: { name: "", arguments: "" } };
+          if (tc.id) toolCalls[i].id = tc.id;
+          if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
+          if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+        }
+      }
+    }
+  }
+  if (usage) await track(state, state.me.name, model, usage.prompt_tokens || 0, usage.completion_tokens || 0);
+  const msg = { role: "assistant", content: content || null };
+  const tc = toolCalls.filter(Boolean);
+  if (tc.length) msg.tool_calls = tc;
+  return msg;
+}
+
 // Einfacher Vision/Text-Aufruf, gibt nur den Text zurück.
 export async function aiExtract(state, text, imageB64) {
   const content = [{ type: "text", text }];

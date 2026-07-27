@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Dialog, DialogTitle, Box, IconButton, TextField, Typography, Paper, Stack, Button,
+  Dialog, Box, IconButton, TextField, Typography, Paper, Button, Avatar, Fade,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import SendRoundedIcon from "@mui/icons-material/SendRounded";
+import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { useAppState } from "../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { aiChat, aiConfigured, aiCostLine } from "../lib/ai";
-import { netOf, amount, owedOf, monthOf, isPending, thisMonth } from "../lib/format";
+import { aiChatStream, aiConfigured, aiCostLine } from "../lib/ai";
+import { netOf, amount, owedOf, monthOf, thisMonth } from "../lib/format";
 
 const TOOLS = [
   { type: "function", function: { name: "get_balance", description: "Aktuellen Saldo abrufen.", parameters: { type: "object", properties: {} } } },
@@ -27,24 +28,36 @@ const TOOL_LABEL = {
   get_balance: "📊 Saldo geprüft", list_entries: "🔎 Einträge gelesen", list_recurring: "🔎 Abos gelesen",
 };
 
+function TypingDots() {
+  const dot = (d) => ({
+    width: 7, height: 7, borderRadius: "50%", bgcolor: "text.disabled",
+    animation: "chatBounce 1.2s infinite ease-in-out", animationDelay: `${d}s`,
+  });
+  return (
+    <Box sx={{ display: "flex", gap: 0.6, px: 2, py: 1.5, alignSelf: "flex-start",
+      "@keyframes chatBounce": { "0%,80%,100%": { transform: "scale(0.6)", opacity: 0.4 }, "40%": { transform: "scale(1)", opacity: 1 } } }}>
+      <Box sx={dot(0)} /><Box sx={dot(0.16)} /><Box sx={dot(0.32)} />
+    </Box>
+  );
+}
+
 export default function Chat({ open, onClose }) {
   const { data } = useAppState();
   const qc = useQueryClient();
-  const [msgs, setMsgs] = useState([]);      // UI-Nachrichten {role, text}
-  const convo = useRef([]);                  // LLM-Verlauf
+  const [msgs, setMsgs] = useState([]);
+  const convo = useRef([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const logRef = useRef();
-  useEffect(() => { logRef.current?.scrollTo(0, 1e9); }, [msgs]);
+  useEffect(() => { logRef.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [msgs, busy]);
 
   if (!data) return null;
   const me = data.me.name;
   const other = data.users.map((u) => u.name).find((n) => n !== me) || "";
-
-  const freshState = async () => (await api("/state"));
+  const fresh = async () => await api("/state");
 
   async function execTool(name, a) {
-    const s = await freshState();
+    const s = await fresh();
     if (name === "get_balance") { const t = netOf(s.entries); return { saldo_eur: Math.abs(t), richtung: t >= 0 ? "Zeynel schuldet Kawa" : (t < 0 ? "Kawa schuldet Zeynel" : "ausgeglichen") }; }
     if (name === "list_entries") { const mo = a.month || thisMonth(); return s.entries.filter((e) => monthOf(e) === mo).map((e) => ({ id: e.id, date: e.date, category: e.category, description: e.description, payer: e.payer, betrag: amount(e), split5050: e.split5050, anteil: owedOf(e), status: e.pay_status || "normal" })); }
     if (name === "list_recurring") return (s.recurring || []).map((r) => ({ id: r.id, description: r.description, amount: r.amount, category: r.category, payer: r.payer, active_from: r.active_from, active_until: r.active_until }));
@@ -57,9 +70,15 @@ export default function Chat({ open, onClose }) {
     return { error: "unbekannt" };
   }
 
-  function systemPrompt() {
-    return `Du bist der Assistent im Schulden-Tracker und handelst als ${me}. Neue Einträge werden IMMER ${me} als Zahler zugeordnet → ${other} schuldet dann. Nutze Tools für Ausgaben/Abos/Zahlungen. Erfinde keine IDs (hole sie via list_entries). Frage bei Unklarheit kurz nach. Kategorien: ${data.categories.join(", ")}. Heute: ${new Date().toISOString().slice(0, 10)}. Antworte knapp auf Deutsch und bestätige, was du getan hast.`;
-  }
+  const systemPrompt = () =>
+    `Du bist der Assistent im Schulden-Tracker und handelst als ${me}. Neue Einträge werden IMMER ${me} als Zahler zugeordnet → ${other} schuldet dann. Nutze Tools für Ausgaben/Abos/Zahlungen. Erfinde keine IDs (hole sie via list_entries). Frage bei Unklarheit kurz nach. Kategorien: ${data.categories.join(", ")}. Heute: ${new Date().toISOString().slice(0, 10)}. Antworte knapp auf Deutsch und bestätige, was du getan hast.`;
+
+  const appendDelta = (delta) => setMsgs((m) => {
+    const c = [...m], last = c[c.length - 1];
+    if (last?.role === "bot" && last.streaming) c[c.length - 1] = { ...last, text: last.text + delta };
+    else c.push({ role: "bot", text: delta, streaming: true });
+    return c;
+  });
 
   const send = async () => {
     const text = input.trim(); if (!text || busy) return;
@@ -72,8 +91,9 @@ export default function Chat({ open, onClose }) {
     let dirty = false;
     try {
       for (let round = 0; round < 8; round++) {
-        const msg = await aiChat(data, convo.current, { tools: TOOLS });
+        const msg = await aiChatStream(data, convo.current, { tools: TOOLS, onDelta: appendDelta });
         convo.current.push(msg);
+        setMsgs((m) => m.map((x) => x.streaming ? { ...x, streaming: false } : x));
         if (msg.tool_calls?.length) {
           for (const tc of msg.tool_calls) {
             let args = {}; try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
@@ -84,7 +104,6 @@ export default function Chat({ open, onClose }) {
           }
           continue;
         }
-        setMsgs((m) => [...m, { role: "bot", text: msg.content || "(fertig)" }]);
         break;
       }
     } catch (e) { setMsgs((m) => [...m, { role: "bot", text: "Fehler: " + e.message }]); }
@@ -92,30 +111,58 @@ export default function Chat({ open, onClose }) {
     if (dirty) qc.invalidateQueries({ queryKey: ["state"] });
   };
 
+  const waiting = busy && !msgs.some((m) => m.streaming);
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth
-      PaperProps={{ sx: { m: 0, ml: "auto", height: "100dvh", maxHeight: "100dvh", width: { xs: "100vw", sm: 440 }, borderRadius: { xs: 0, sm: "22px 0 0 22px" } } }}>
-      <Box sx={{ display: "flex", alignItems: "center", p: 2, borderBottom: 1, borderColor: "divider" }}>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h3">💬 Assistent</Typography>
-          <Typography variant="caption" color="text.secondary">handelt als {me} · {aiCostLine(data) || "KI-Kosten: —"}</Typography>
+      PaperProps={{ sx: { m: 0, ml: "auto", height: "100dvh", maxHeight: "100dvh", width: { xs: "100vw", sm: 460 },
+        borderRadius: { xs: 0, sm: "24px 0 0 24px" }, display: "flex", flexDirection: "column" } }}>
+
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2.5, py: 2, borderBottom: 1, borderColor: "divider" }}>
+        <Avatar sx={{ bgcolor: "primary.main", width: 38, height: 38 }}><AutoAwesomeRoundedIcon fontSize="small" /></Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h3" sx={{ lineHeight: 1.1 }}>Assistent</Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>handelt als {me} · {aiCostLine(data) || "bereit"}</Typography>
         </Box>
         <Button size="small" onClick={() => { setMsgs([]); convo.current = []; }}>Neu</Button>
         <IconButton onClick={onClose}><CloseRoundedIcon /></IconButton>
       </Box>
-      <Box ref={logRef} sx={{ flex: 1, overflowY: "auto", p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-        {!msgs.length && <Typography variant="body2" color="text.secondary">Hi {me}! Z. B. „trag 12,50 € Tanken ein, 50:50" oder „was schuldet mir {other}?".</Typography>}
-        {msgs.map((m, i) => m.role === "tool"
-          ? <Typography key={i} variant="caption" align="center" color="text.secondary" sx={{ bgcolor: "action.hover", borderRadius: 5, px: 1.5, py: 0.4, alignSelf: "center" }}>{m.text}</Typography>
-          : <Paper key={i} elevation={0} sx={{ p: 1.25, maxWidth: "82%", alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-              bgcolor: m.role === "user" ? "primary.main" : "action.hover", color: m.role === "user" ? "#fff" : "text.primary",
-              borderRadius: 3, whiteSpace: "pre-wrap" }}>{m.text}</Paper>)}
-        {busy && <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>…</Typography>}
+
+      <Box ref={logRef} sx={{ flex: 1, overflowY: "auto", px: 2.5, py: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+        {!msgs.length && (
+          <Box sx={{ m: "auto", textAlign: "center", color: "text.secondary", maxWidth: 300 }}>
+            <AutoAwesomeRoundedIcon sx={{ fontSize: 34, mb: 1, color: "primary.main" }} />
+            <Typography variant="body2">Hi {me}! Ich verwalte dein Kassenbuch per Chat.</Typography>
+            <Typography variant="caption" sx={{ display: "block", mt: 1 }}>
+              „trag 12,50 € Tanken ein, 50:50" · „was schuldet mir {other}?" · „mach ein Abo: Spotify 10,99 € monatlich"
+            </Typography>
+          </Box>
+        )}
+        {msgs.map((m, i) => m.role === "tool" ? (
+          <Fade in key={i}><Box sx={{ alignSelf: "center", bgcolor: "action.hover", color: "text.secondary",
+            borderRadius: 999, px: 1.75, py: 0.6, fontSize: 12.5, fontWeight: 600 }}>{m.text}</Box></Fade>
+        ) : (
+          <Paper key={i} elevation={0} sx={{
+            px: 2, py: 1.5, maxWidth: "86%", alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+            bgcolor: m.role === "user" ? "primary.main" : "background.paper",
+            color: m.role === "user" ? "primary.contrastText" : "text.primary",
+            border: m.role === "user" ? "none" : 1, borderColor: "divider",
+            borderRadius: 3, borderBottomRightRadius: m.role === "user" ? 6 : 24, borderBottomLeftRadius: m.role === "user" ? 24 : 6,
+            whiteSpace: "pre-wrap", lineHeight: 1.5, boxShadow: m.role === "user" ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
+          }}>{m.text}{m.streaming && <Box component="span" sx={{ ml: 0.3, animation: "blink 1s steps(2) infinite", "@keyframes blink": { "50%": { opacity: 0 } } }}>▍</Box>}</Paper>
+        ))}
+        {waiting && <TypingDots />}
       </Box>
-      <Box sx={{ display: "flex", gap: 1, p: 1.5, borderTop: 1, borderColor: "divider" }}>
-        <TextField fullWidth size="small" placeholder="Nachricht…" value={input}
-          onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
-        <IconButton color="primary" onClick={send} disabled={busy}><SendRoundedIcon /></IconButton>
+
+      <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1, p: 2, borderTop: 1, borderColor: "divider" }}>
+        <TextField fullWidth size="small" placeholder={`Nachricht an den Assistenten…`} value={input} multiline maxRows={4}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4, bgcolor: "action.hover", px: 0.5 } }} />
+        <IconButton color="primary" onClick={send} disabled={busy || !input.trim()}
+          sx={{ bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground" } }}>
+          <ArrowUpwardRoundedIcon />
+        </IconButton>
       </Box>
     </Dialog>
   );
