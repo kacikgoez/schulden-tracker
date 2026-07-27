@@ -572,12 +572,18 @@ input[type=checkbox]{accent-color:var(--accent)}
     <button class="btn" id="notifbtn" type="button">Benachrichtigungen erlauben</button>
   </div>
 
+  <div id="cloudinfo" style="display:none">
+    <h3 class="sect">Sync</h3>
+    <p class="note">☁︎ Cloud-Sync aktiv — Speichern läuft automatisch, nichts einzurichten.</p>
+  </div>
+  <div id="ghsync">
   <h3 class="sect">Sync (privates Daten-Repo)</h3>
   <p class="note">Fine-grained Token, nur das Daten-Repo, „Contents: Read & Write".
     Pro Gerät einmal. Ohne Token: Änderungen als Datei-Download.</p>
   <label>Daten-Repo (owner/name)</label><input id="cfgrepo" placeholder="kacikgoez/schulden-tracker-data">
   <label>Branch</label><input id="cfgbranch" placeholder="main">
   <label>Token</label><input id="cfgtoken" type="password" placeholder="github_pat_…">
+  </div>
 
   <h3 class="sect">Bankverbindungen (geteilt, für GiroCode)</h3>
   <label>IBAN Kawa</label><input id="cfgibanK" placeholder="DE…" autocomplete="off">
@@ -820,6 +826,23 @@ async function loadVault(){
 }
 async function saveVault(){ localStorage.vault = await encJSON(VAULT); }
 const ghTok = () => localStorage.ghtoken || "";
+/* Cloudflare-Backend (gleiche Domain): API unter ./api, Auth = hex(SHA-256(DEK)) */
+let API = null;
+async function authHex(){
+  const h = await crypto.subtle.digest("SHA-256", DEKRAW);
+  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function apiGet(path, auth){
+  const h = auth ? {"X-Auth": await authHex()} : {};
+  const r = await fetch(API+path, {headers:h, cache:"no-store"});
+  if(!r.ok) throw new Error("API "+r.status);
+  return r.json();
+}
+async function apiSend(path, method, bodyStr){
+  const r = await fetch(API+path, {method, headers:{"X-Auth": await authHex(), "content-type":"application/json"}, body:bodyStr});
+  if(!r.ok) throw new Error("API "+r.status);
+  return r.json();
+}
 const cfg = () => ({repo:localStorage.repo||"kacikgoez/schulden-tracker-data", branch:localStorage.branch||"main",
   prov:localStorage.prov||"openrouter", model:localStorage.model||"", base:localStorage.base||"",
   dictate:localStorage.dictate||"browser", amodel:localStorage.amodel||""});
@@ -860,6 +883,15 @@ async function ghPut(path, contentB64, message, sha){
 /* Startdaten laden: keys.enc + ledger.enc aus dem privaten Daten-Repo (per API mit Token).
    Fallback: gleiche Origin (lokal/dev), dann Datei-Auswahl. */
 async function loadBoot(){
+  // 1) Cloudflare-Backend (gleiche Domain)? keys.enc ist ohne Auth lesbar.
+  try{
+    const base = new URL("api", location.href).href.replace(/\/$/,"");
+    const r = await fetch(base+"/keys", {cache:"no-store"});
+    if(r.ok){
+      const k = await r.json();
+      if(k && k.users){ API = base; KEYS = k; $("srcinfo").textContent = "Cloud-Sync aktiv"; return true; }
+    }
+  }catch(_e){}
   const c = cfg();
   if(c.repo && ghTok()){
     try{
@@ -907,6 +939,12 @@ function mergeData(local, remote){
 }
 
 async function persist(msg){
+  if(API){
+    try{ await apiSend("/ledger", "PUT", await encJSON(DATA));
+      $("syncstate").textContent = "✓ gespeichert"; }
+    catch(e){ $("syncstate").textContent = "⚠︎ Speichern fehlgeschlagen (" + e.message + ")"; }
+    return;
+  }
   const c = cfg();
   if(c.repo && ghTok()){
     for(let attempt=0; attempt<2; attempt++){
@@ -938,8 +976,12 @@ async function persist(msg){
 }
 /* keys.enc (Passwörter) speichern — nur bei Passwort-/Nutzeränderungen */
 async function persistKeys(msg){
-  const c = cfg();
   const blob = JSON.stringify(KEYS);
+  if(API){
+    try{ await apiSend("/keys", "POST", blob); return true; }
+    catch(e){ $("syncstate").textContent = "⚠︎ keys speichern fehlgeschlagen (" + e.message + ")"; return false; }
+  }
+  const c = cfg();
   if(c.repo && ghTok()){
     if(!KEYSHA) KEYSHA = await ghGetSha("data/keys.enc");
     const r = await ghPut("data/keys.enc", b64e(te.encode(blob)), `[${actor()}] ${msg}`, KEYSHA);
@@ -1153,15 +1195,18 @@ $("propsave").onclick = async () => {
   $("propsave").disabled = true;
   let receiptId = null;
   const c = cfg();
-  if(SCANIMG && c.repo && ghTok()){
+  if(SCANIMG && (API || (c.repo && ghTok()))){
     receiptId = newId("r");
     $("scanstate").innerHTML = "<span class='spin'></span> Beleg wird verschlüsselt gespeichert …";
     const enc = await encWithDEK(b64d(SCANIMG));
-    const r = await ghPut(`data/receipts/${receiptId}.enc`, b64e(te.encode(enc)),
-      `[${actor()}] Beleg ${receiptId}`);
-    if(!r.ok){ receiptId = null; $("scanstate").innerHTML = "<span class='err'>Beleg-Upload fehlgeschlagen — Einträge werden ohne Beleg gespeichert.</span>"; }
+    let okUp = false;
+    try{
+      if(API){ await apiSend(`/receipt/${receiptId}`, "PUT", enc); okUp = true; }
+      else { const r = await ghPut(`data/receipts/${receiptId}.enc`, b64e(te.encode(enc)), `[${actor()}] Beleg ${receiptId}`); okUp = r.ok; }
+    }catch(_e){ okUp = false; }
+    if(!okUp){ receiptId = null; $("scanstate").innerHTML = "<span class='err'>Beleg-Upload fehlgeschlagen — Einträge werden ohne Beleg gespeichert.</span>"; }
   } else if(SCANIMG){
-    $("scanstate").textContent = "Hinweis: ohne Git-Sync wird der Beleg nicht dauerhaft gespeichert.";
+    $("scanstate").textContent = "Hinweis: ohne Sync wird der Beleg nicht dauerhaft gespeichert.";
   }
   for(const i of picks){
     const p = SCANRESULTS.entries[i];
@@ -1182,8 +1227,10 @@ async function showReceipt(e){
   $("receiptimg").src = ""; $("receiptstate").innerHTML = "<span class='spin'></span> laden & entschlüsseln …";
   $("receiptdlg").showModal();
   try{
-    const j = await ghGet(`data/receipts/${e.receipt}.enc`);
-    const env = JSON.parse(td.decode(b64d(j.content.replace(/\n/g,""))));
+    let env;
+    if(API){ env = await apiGet(`/receipt/${e.receipt}`, true); }
+    else { const j = await ghGet(`data/receipts/${e.receipt}.enc`);
+      env = JSON.parse(td.decode(b64d(j.content.replace(/\n/g,"")))); }
     const bytes = await decWithDEK(env);
     $("receiptimg").src = URL.createObjectURL(new Blob([bytes], {type:"image/jpeg"}));
     $("receiptstate").textContent = e.receipt_note ? "Extraktion: " + e.receipt_note : "";
@@ -1720,6 +1767,8 @@ if(localStorage.theme) document.documentElement.dataset.theme = localStorage.the
 $("setupbtn").onclick = () => {
   const c = cfg();
   $("whoinfo").textContent = "Angemeldet als " + actor() + (isAdmin() ? " (Admin)" : "");
+  $("cloudinfo").style.display = API ? "" : "none";
+  $("ghsync").style.display = API ? "none" : "";
   $("cfgrepo").value = c.repo; $("cfgbranch").value = c.branch;
   $("cfgtoken").value = ghTok(); $("cfgprov").value = c.prov;
   $("cfgmodel").value = c.model; $("cfgbase").value = c.base;
@@ -1832,6 +1881,9 @@ async function bootLoaded(){
 }
 async function enterApp(){
   await loadVault();
+  if(API && !window._env){                 // Ledger erst nach Login (mit Auth) laden
+    window._env = await apiGet("/ledger", true);
+  }
   DATA = await decJSON(window._env);
   DATA.history = DATA.history || [];
   $("lockwrap").style.display = "none"; $("app").style.display = "";
