@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Dialog, Box, IconButton, TextField, Typography, Paper, Button, Avatar, Fade,
+  Drawer, Box, IconButton, TextField, Typography, Paper, Button, Avatar, Fade,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
@@ -134,9 +134,9 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
   const waiting = busy && !msgs.some((m) => m.streaming);
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth
-      PaperProps={{ sx: { m: 0, ml: "auto", height: "100dvh", maxHeight: "100dvh", width: { xs: "100vw", sm: 460 },
-        borderRadius: { xs: 0, sm: "24px 0 0 24px" }, display: "flex", flexDirection: "column" } }}>
+    <Drawer anchor="right" open={open} onClose={onClose}
+      PaperProps={{ sx: { width: { xs: "100%", sm: 460 }, height: "100dvh",
+        display: "flex", flexDirection: "column", borderRadius: { xs: 0, sm: "24px 0 0 24px" } } }}>
 
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2.5, py: 2, borderBottom: 1, borderColor: "divider" }}>
         <Avatar sx={{ bgcolor: "primary.main", width: 38, height: 38 }}><AutoAwesomeRoundedIcon fontSize="small" /></Avatar>
@@ -184,6 +184,6 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
           <ArrowUpwardRoundedIcon />
         </IconButton>
       </Box>
-    </Dialog>
+    </Drawer>
   );
 }
