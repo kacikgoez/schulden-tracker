@@ -42,12 +42,14 @@ export default function Shell({ state, mode, toggleMode }) {
 
   return (
     <Box sx={{ pb: 12, maxWidth: 760, mx: "auto" }}>
-      <AppBar position="sticky" color="transparent" elevation={0}
-        sx={{ backdropFilter: "blur(18px)", bgcolor: "background.default" }}>
+      <AppBar position="sticky" elevation={0}>
         <Toolbar>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Kawa · Zeynel</Typography>
-            <Typography variant="h2" sx={{ lineHeight: 1 }}>{TITLES[tab]}</Typography>
+          <Box sx={{ width: 34, height: 34, borderRadius: 2, mr: 1.5, display: "grid", placeItems: "center",
+            background: (t) => `linear-gradient(135deg, ${t.palette.primary.main}, ${t.palette.primary.dark})`,
+            color: "#fff", fontWeight: 800, fontSize: 18 }}>₺</Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Kawa · Zeynel</Typography>
+            <Typography variant="h2" sx={{ lineHeight: 1 }} noWrap>{TITLES[tab]}</Typography>
           </Box>
           <IconButton onClick={toggleMode}><DarkModeRoundedIcon /></IconButton>
           <IconButton onClick={() => setSettingsOpen(true)}><SettingsRoundedIcon /></IconButton>

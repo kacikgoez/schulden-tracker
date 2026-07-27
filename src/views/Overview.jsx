@@ -1,4 +1,6 @@
 import { Card, CardContent, Typography, Box, Button, Stack, Chip, LinearProgress } from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import { useAppState, useApiMutation } from "../lib/queries";
 import { api } from "../lib/api";
 import { eur, netOf, balanceLabel, isPending, amount, owedOf, monthOf, thisMonth, mLabel, monthsList } from "../lib/format";
@@ -8,20 +10,22 @@ export default function Overview({ onPay }) {
   if (!data) return null;
   const { entries, me } = data;
   const total = netOf(entries);
+  const settled = Math.abs(total) < 0.005;
 
   return (
     <Stack spacing={1.5}>
-      <Card>
-        <CardContent sx={{ textAlign: "center", py: 4 }}>
-          <Typography color="text.secondary" fontWeight={600}>{balanceLabel(total)}</Typography>
-          <Typography sx={{ fontSize: 48, fontWeight: 800, letterSpacing: "-0.03em",
-            color: "primary.main", my: 0.5 }}>
+      <Card sx={{ overflow: "hidden" }}>
+        <Box sx={{ height: 5, background: (t) => `linear-gradient(90deg, ${t.palette.primary.main}, ${alpha(t.palette.primary.main, 0.35)})` }} />
+        <CardContent sx={{ textAlign: "center", py: 4.5 }}>
+          <Chip size="small" icon={<SwapHorizRoundedIcon />} label={settled ? "ausgeglichen" : balanceLabel(total)}
+            sx={{ bgcolor: "action.hover", color: "text.secondary", fontWeight: 600, mb: 1.5 }} />
+          <Typography sx={{ fontSize: 52, fontWeight: 800, letterSpacing: "-0.035em", lineHeight: 1 }}>
             {eur(Math.abs(total))}
           </Typography>
-          <Typography variant="caption" color="text.secondary">{entries.length} Einträge</Typography>
-          <Box sx={{ mt: 2 }}>
-            <Button variant="contained" onClick={onPay}>Zahlung melden</Button>
-          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            über {entries.length} Einträge · Stand heute
+          </Typography>
+          <Button variant="contained" size="large" onClick={onPay} sx={{ mt: 2.5, px: 3 }}>Zahlung melden</Button>
         </CardContent>
       </Card>
 
@@ -76,14 +80,17 @@ function Trend({ entries }) {
     <Card>
       <CardContent>
         <Typography variant="h3" gutterBottom>Monatssalden</Typography>
-        <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1, height: 90 }}>
-          {ms.map((m, i) => (
-            <Box key={m} sx={{ flex: 1, textAlign: "center" }}>
-              <Box sx={{ height: `${(Math.abs(nets[i]) / max) * 62 + 3}px`, bgcolor: m === thisMonth() ? "primary.main" : "primary.light",
-                borderRadius: 1, mb: 0.5 }} />
-              <Typography variant="caption" color="text.secondary">{mLabel(m).slice(0, 3)}</Typography>
-            </Box>
-          ))}
+        <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1.25, height: 96, pt: 1 }}>
+          {ms.map((m, i) => {
+            const cur = m === thisMonth();
+            return (
+              <Box key={m} sx={{ flex: 1, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                <Box sx={{ height: `${(Math.abs(nets[i]) / max) * 64 + 4}px`, borderRadius: "6px 6px 3px 3px", mb: 0.75,
+                  background: (t) => cur ? `linear-gradient(180deg, ${t.palette.primary.main}, ${alpha(t.palette.primary.main, 0.7)})` : alpha(t.palette.primary.main, 0.22) }} />
+                <Typography variant="caption" sx={{ color: cur ? "primary.main" : "text.secondary", fontWeight: cur ? 700 : 400 }}>{mLabel(m).slice(0, 3)}</Typography>
+              </Box>
+            );
+          })}
         </Box>
       </CardContent>
     </Card>
