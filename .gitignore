@@ -1,7 +1,10 @@
-data/
+node_modules/
+dist/
 .backups/
 .env
 *.plain.json
 SECRET*
 .DS_Store
 __pycache__/
+data/ledger.v1.bak
+migrate.sql

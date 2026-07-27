@@ -18,34 +18,33 @@ Schnittstelle für Menschen und LLMs. Keine Server, keine Kosten, nichts zu wart
   jeder Speichervorgang ist zusätzlich ein echter Git-Commit
 - 🔀 Konflikt-sicher: gleichzeitige Änderungen von zwei Geräten werden gemerged
 
-## Wie es funktioniert (server-autoritativ)
+## Architektur
 
-Normale Web-App auf **Cloudflare** — nichts Verschlüsseltes im Browser:
+Frontend: **React + Vite + MUI (Material UI)** + **TanStack Query**. Backend unverändert:
+Cloudflare **Pages Functions** (`functions/api/…`) + **D1** (SQLite). Server-autoritativ,
+Login mit Sessions (HttpOnly-Cookie), serverseitige Validierung.
 
 ```
-Cloudflare Pages      →  statische App (index.html …)
-Pages Functions       →  functions/api/…  = die API (Login, Sessions, CRUD, Validierung)
-Cloudflare D1 (SQLite)→  die Datenbank (users, entries, sessions, settings, history, receipts)
+src/           React-App (components, views, features, lib)
+functions/api  Server-API (Login, CRUD, Zahlungen, Abos, Belege, Einstellungen)
+public/        PWA-Assets (manifest, icons, service worker)
+schema.sql     D1-Schema · migrate.js  Alt-Migration
+legacy/        alte Vanilla-Version (Referenz)
 ```
 
-- **Login:** Nutzer + Passwort → Server prüft (PBKDF2-SHA256, 4× verkettet ≈ 400k)
-  → Session-Token als **HttpOnly-Secure-Cookie** (30 Tage). Kein Token-Handling im Client.
-- **Server-autoritativ:** Jede Änderung geht über die API, wird serverseitig validiert
-  (Kategorie/Zahler/Datum/Pfand-Regel), protokolliert (history) und in D1 gespeichert.
-- **Autorisierung:** Zahlungen bestätigt nur der Empfänger; Passwörter anderer setzt nur der Admin (Kawa).
-- **Sicher:** HTTPS erzwungen, Passwörter nur gehasht, Sessions serverseitig, Eingaben validiert.
-
-Live: **https://schulden-kz.pages.dev** — öffnen, Nutzer wählen, Passwort, fertig.
-Free-Tier (Pages + D1) → **0 €/Monat**.
-
-## Deploy / Entwicklung
-
+Entwicklung:
 ```bash
-npx wrangler login                    # einmalig
-./deploy.sh                           # App + Functions nach Cloudflare Pages
-npx wrangler d1 execute schulden --remote --file schema.sql   # Schema (einmalig)
-node migrate.js > migrate.sql && npx wrangler d1 execute schulden --remote --file migrate.sql  # Daten (einmalig)
+npm install
+npx wrangler pages dev dist --d1 schulden=<id>   # API lokal (nach npm run build)
+npm run dev                                        # Vite mit /api-Proxy auf :8788
 ```
+
+Deploy (alles nach Cloudflare Pages):
+```bash
+npx wrangler login      # einmalig
+./deploy.sh             # npm run build + wrangler pages deploy dist (inkl. Functions + D1)
+```
+Live: **https://schulden-kz.pages.dev**
 
 ## Regeln des Kassenbuchs
 
