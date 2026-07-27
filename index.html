@@ -197,7 +197,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
   background:var(--card);-webkit-backdrop-filter:blur(28px) saturate(1.9);backdrop-filter:blur(28px) saturate(1.9);
   border:.5px solid var(--stroke);border-radius:999px;box-shadow:var(--shadow)}
 .dockitem{display:flex;flex-direction:column;align-items:center;gap:1px;
-  min-width:74px;padding:7px 12px;border:none;border-radius:999px;background:none;
+  min-width:54px;padding:7px 8px;border:none;border-radius:999px;background:none;
   font-size:11.5px;font-weight:650;color:var(--ink-2);cursor:pointer;
   transition:background .15s ease,color .15s ease,transform .15s ease}
 .dockitem span{font-size:19px;line-height:1.15}
@@ -380,7 +380,41 @@ input[type=checkbox]{accent-color:var(--accent)}
         <div><div class="tt">Diktieren</div><div class="ts">Sag den Eintrag einfach an</div></div></button>
       <button class="tile" id="tileManual"><div class="ic alt">✎</div>
         <div><div class="tt">Von Hand</div><div class="ts">Betrag selbst eintippen</div></div></button>
+      <button class="tile" id="tileRecurring"><div class="ic">🔁</div>
+        <div><div class="tt">Abo / Fixkosten</div><div class="ts">Wiederkehrt jeden Monat automatisch</div></div></button>
     </div>
+  </dialog>
+
+  <dialog id="recdlg">
+    <div class="sheet-head"><h3 id="rectitle">Neues Abo</h3>
+      <button class="xclose" id="recx" aria-label="Schließen">✕</button></div>
+    <form class="f2" id="recform">
+      <label class="fld eur">Betrag / Monat
+        <input name="amount" type="number" step="0.01" required inputmode="decimal" placeholder="0,00">
+      </label>
+      <label class="fld">Beschreibung
+        <input name="description" required placeholder="z. B. Netflix, Vodafone, Miete-Anteil">
+      </label>
+      <div class="row2">
+        <label class="fld">Kategorie<select name="category" id="reccat"></select></label>
+        <label class="fld">Abbuchung am … Tag<input name="day" type="number" min="1" max="28" placeholder="1" inputmode="numeric"></label>
+      </div>
+      <label class="toggle">
+        <div><div style="font-weight:700;color:var(--ink)">50 : 50 teilen</div>
+          <div class="note">der/die andere schuldet die Hälfte</div></div>
+        <span class="switch"><input type="checkbox" name="split5050"><span class="slider"></span></span>
+      </label>
+      <div class="row2">
+        <label class="fld">Aktiv ab<input name="active_from" type="date" required></label>
+        <label class="fld">Aktiv bis (optional)<input name="active_until" type="date"></label>
+      </div>
+      <div class="note" id="recpayerinfo"></div>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="recsave">Speichern</button>
+        <button class="btn" type="button" id="reccancel">Abbrechen</button>
+        <span id="recmsg" class="note"></span>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="addsheet">
@@ -427,6 +461,22 @@ input[type=checkbox]{accent-color:var(--accent)}
       </form>
     <p class="note" style="margin:10px 0 0">Pfand nur bei „Getränke". 50:50 = der andere schuldet die Hälfte.</p>
   </dialog>
+  <div id="viewRecurring" style="display:none">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <h3 style="margin:0;flex:1">Abos & Fixkosten</h3>
+        <button class="btn primary" id="recadd">＋ Abo</button>
+      </div>
+      <p class="note" style="margin:0 0 10px">Wiederkehrende Kosten. Der Eintrag wird jeden Monat automatisch verbucht.</p>
+      <div class="duo" style="margin-bottom:12px">
+        <div class="stat"><div class="lbl">Läuft aktuell</div><div class="val" id="recTotal"></div>
+          <div class="note" id="recDetail"></div></div>
+        <div class="stat"><div class="lbl">Aktive Abos</div><div class="val" id="recCount"></div></div>
+      </div>
+      <div id="reclist"></div>
+    </div>
+  </div>
+
   <div id="viewHist" style="display:none">
     <div class="card">
       <h3 style="margin:0 0 4px">Änderungsprotokoll</h3>
@@ -454,9 +504,10 @@ input[type=checkbox]{accent-color:var(--accent)}
   </div>
 
   <nav class="dock">
-    <button class="dockitem on" id="tabHome"><span>▤</span>Übersicht</button>
+    <button class="dockitem on" id="tabHome"><span>▤</span>Start</button>
     <button class="dockitem" id="tabEntries"><span>≣</span>Einträge</button>
     <button class="dockcam" id="addbtn" title="Neuer Eintrag">＋</button>
+    <button class="dockitem" id="tabRecurring"><span>🔁</span>Abos</button>
     <button class="dockitem" id="tabHist"><span>↺</span>Verlauf</button>
   </nav>
 </div>
@@ -730,7 +781,7 @@ async function api(path, method, bodyObj){
 async function loadState(){
   const s = await api("/state");
   ME = s.me; USERS = s.users || [];
-  DATA = {entries:s.entries||[], history:s.history||[], settings:s.settings||{},
+  DATA = {entries:s.entries||[], recurring:s.recurring||[], history:s.history||[], settings:s.settings||{},
     categories:s.categories||[], pfand_rates:s.pfand_rates||RATES};
 }
 async function reload(){ await loadState(); render(); }
@@ -1429,24 +1480,113 @@ $("paydone").onclick = async () => {
 };
 
 /* ================= Navigation, Theme, Setup, Unlock ================= */
-const VIEWS = {home:"viewHome", entries:"viewEntries", hist:"viewHist"};
+const VIEWS = {home:"viewHome", entries:"viewEntries", recurring:"viewRecurring", hist:"viewHist"};
 function show(v){
   for(const [k,id] of Object.entries(VIEWS)) $(id).style.display = k===v ? "" : "none";
   $("tabHome").classList.toggle("on", v==="home");
   $("tabEntries").classList.toggle("on", v==="entries");
+  $("tabRecurring").classList.toggle("on", v==="recurring");
   $("tabHist").classList.toggle("on", v==="hist");
   if(v==="hist") renderHistory();
+  if(v==="recurring") renderRecurring();
   scrollTo({top:0});
 }
 $("tabHome").onclick = () => show("home");
 $("tabEntries").onclick = () => show("entries");
+$("tabRecurring").onclick = () => show("recurring");
 $("tabHist").onclick = () => show("hist");
 $("addbtn").onclick = () => $("addchooser").showModal();
 $("chooserx").onclick = () => $("addchooser").close();
 $("tileScan").onclick = () => { $("addchooser").close(); $("scanbtn").click(); };
 $("tileMic").onclick = () => { $("addchooser").close(); $("micbtn").click(); };
 $("tileManual").onclick = () => { $("addchooser").close(); endEdit(); $("addsheet").showModal(); };
+$("tileRecurring").onclick = () => { $("addchooser").close(); openRec(); };
 $("formx").onclick = () => { endEdit(); $("addsheet").close(); };
+
+/* ================= Abos & Fixkosten ================= */
+let RECEDIT = null;
+const recActive = r => { const now=new Date().toISOString().slice(0,10);
+  return r.active_from<=now && (!r.active_until || r.active_until>=now); };
+function renderRecurring(){
+  const list = (DATA.recurring||[]).slice().sort((a,b)=>a.description.localeCompare(b.description));
+  const active = list.filter(recActive);
+  let sumMonth = 0, owedMonth = {Kawa:0, Zeynel:0};
+  for(const r of active){ sumMonth += r.amount;
+    const other = r.payer==="Kawa"?"Zeynel":"Kawa";
+    owedMonth[other] += r.split5050 ? r.amount/2 : r.amount; }
+  $("recTotal").textContent = eur(sumMonth) + " / Monat";
+  $("recDetail").textContent = `Zeynel schuldet ${eur(owedMonth.Zeynel)}, Kawa ${eur(owedMonth.Kawa)} pro Monat`;
+  $("recCount").textContent = active.length + (list.length>active.length ? ` (+${list.length-active.length} beendet)` : "");
+  const box = $("reclist"); box.innerHTML = "";
+  if(!list.length){ box.innerHTML = "<p class='note'>Noch keine Abos. Oben auf ＋ Abo tippen.</p>"; return; }
+  for(const r of list){
+    const on = recActive(r);
+    const other = r.payer==="Kawa"?"Zeynel":"Kawa";
+    const owed = r.split5050 ? r.amount/2 : r.amount;
+    const row = document.createElement("div"); row.className="hrow"; row.style.alignItems="center";
+    row.innerHTML = `<div class="what">
+        <b style="${on?'':'text-decoration:line-through;opacity:.6'}">${esc(r.description)}</b>
+        <span class="tag">${esc(r.category)}</span>
+        ${on?"":'<span class="pill">beendet</span>'}
+        <div class="note">${eur(r.amount)}/Monat · ${r.split5050?"50:50 → ":""}${esc(other)} schuldet ${eur(owed)}${r.split5050?"":""}
+          · ab ${r.active_from.slice(0,7)}${r.active_until?" bis "+r.active_until.slice(0,7):""} · erfasst von ${esc(r.payer)}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="rowbtn" data-rece="${r.id}" title="bearbeiten">✎</button>
+        <button class="rowbtn danger" data-recd="${r.id}" title="löschen">✕</button>
+      </div>`;
+    box.appendChild(row);
+  }
+  box.querySelectorAll("[data-rece]").forEach(b=>b.onclick=()=>openRec(b.dataset.rece));
+  box.querySelectorAll("[data-recd]").forEach(b=>b.onclick=async()=>{
+    const r = DATA.recurring.find(x=>x.id===b.dataset.recd);
+    if(!confirm(`Abo „${r.description}" löschen?\nBereits verbuchte Monate bleiben als Einträge erhalten.`)) return;
+    try{ await api("/recurring/"+r.id, "DELETE"); await loadState(); renderRecurring(); render(); }
+    catch(e){ alert("Fehler: "+e.message); }
+  });
+}
+function fillRecCats(){
+  const sel = $("reccat");
+  if(!sel.options.length) for(const c of DATA.categories){ const o=document.createElement("option"); o.textContent=c; sel.appendChild(o); }
+}
+function openRec(id){
+  fillRecCats();
+  const f = $("recform"); RECEDIT = id || null;
+  const r = id ? DATA.recurring.find(x=>x.id===id) : null;
+  $("rectitle").textContent = id ? "Abo bearbeiten" : "Neues Abo";
+  f.amount.value = r ? r.amount : "";
+  f.description.value = r ? r.description : "";
+  f.category.value = r ? r.category : "Abo/Streaming";
+  f.day.value = r ? (r.day||"") : "";
+  f.split5050.checked = r ? !!r.split5050 : false;
+  f.active_from.value = r ? r.active_from : new Date().toISOString().slice(0,10);
+  f.active_until.value = r && r.active_until ? r.active_until : "";
+  const payer = r ? r.payer : actor();
+  const other = payer==="Kawa"?"Zeynel":"Kawa";
+  $("recpayerinfo").textContent = `${other} schuldet` + (payer!==actor()?` (von ${payer} erfasst)`:"");
+  $("recmsg").textContent = "";
+  $("recdlg").showModal();
+}
+$("recadd").onclick = () => openRec();
+$("recx").onclick = $("reccancel").onclick = () => $("recdlg").close();
+$("recform").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const f = ev.target;
+  const r = {
+    category: f.category.value, description: f.description.value.trim(),
+    amount: +f.amount.value, split5050: f.split5050.checked,
+    day: f.day.value ? +f.day.value : 1,
+    active_from: f.active_from.value, active_until: f.active_until.value || null
+  };
+  if(RECEDIT) r.id = RECEDIT;
+  if(!r.description || !isFinite(r.amount) || r.amount<=0){ $("recmsg").textContent="Bitte Betrag und Beschreibung prüfen."; return; }
+  try{ await api("/recurring", "POST", r); }
+  catch(e){ $("recmsg").textContent = e.message; return; }
+  $("recdlg").close();
+  await loadState(); renderRecurring(); render();
+  show("recurring");
+});
+
 $("prev").onclick = () => { const ms = monthsList(); CUR = ms[ms.indexOf(CUR)-1]; render(); };
 $("next").onclick = () => { const ms = monthsList(); CUR = ms[ms.indexOf(CUR)+1]; render(); };
 $("themebtn").onclick = () => {

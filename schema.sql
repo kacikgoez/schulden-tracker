@@ -55,3 +55,16 @@ CREATE TABLE IF NOT EXISTS receipts (
   id   TEXT PRIMARY KEY,
   data TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS recurring (
+  id           TEXT PRIMARY KEY,
+  category     TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  amount       REAL NOT NULL,
+  split5050    INTEGER NOT NULL DEFAULT 0,
+  payer        TEXT NOT NULL,
+  day          INTEGER,
+  active_from  TEXT NOT NULL,
+  active_until TEXT,
+  created_by   TEXT
+);

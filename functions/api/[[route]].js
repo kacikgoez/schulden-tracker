@@ -86,6 +86,34 @@ async function upsertEntry(env, e){
 }
 const amount = e => Math.round((e.qty||1)*e.unit_price*100)/100;
 
+/* Wiederkehrende Kosten → automatische Monatseinträge (deterministische IDs, idempotent). */
+function monthList(fromM, toM){
+  const out=[]; let [y,mo]=fromM.split("-").map(Number); let c=0;
+  while(c<120){ const M=`${y}-${String(mo).padStart(2,"0")}`; if(M>toM) break; out.push(M); mo++; if(mo>12){mo=1;y++;} c++; }
+  return out;
+}
+async function materializeMonth(env, r, M){
+  const day = Math.min(28, Math.max(1, r.day||1));
+  const date = `${M}-${String(day).padStart(2,"0")}`;
+  await env.schulden.prepare(
+    `INSERT OR IGNORE INTO entries (id,date,category,description,payer,unit_price,split5050,created_by,mt)
+     VALUES (?,?,?,?,?,?,?,?,?)`
+  ).bind(`rec-${r.id}-${M}`, date, r.category, r.description, r.payer, r.amount, r.split5050?1:0, r.created_by||r.payer, nowIso()).run();
+}
+async function materializeAll(env, r){
+  const now = new Date().toISOString().slice(0,7);
+  const end = r.active_until ? (r.active_until.slice(0,7) < now ? r.active_until.slice(0,7) : now) : now;
+  for(const M of monthList(r.active_from.slice(0,7), end)) await materializeMonth(env, r, M);
+}
+async function ensureThisMonth(env){
+  const now = new Date().toISOString().slice(0,7);
+  const recs = (await env.schulden.prepare("SELECT * FROM recurring").all()).results;
+  for(const r of recs){
+    const start = r.active_from.slice(0,7), end = r.active_until ? r.active_until.slice(0,7) : now;
+    if(start <= now && now <= end) await materializeMonth(env, r, now);
+  }
+}
+
 export async function onRequest(context){
   try { return await handle(context); }
   catch(e){ return json({ error: "server", detail: String(e && e.stack || e) }, 500); }
@@ -124,15 +152,51 @@ async function handle(context){
 
   // ---- Gesamtzustand ----
   if(p === "/state" && m === "GET"){
+    await ensureThisMonth(env);
     const entries = (await env.schulden.prepare("SELECT * FROM entries").all()).results.map(rowToEntry);
+    const recurring = (await env.schulden.prepare("SELECT * FROM recurring").all()).results
+      .map(r => ({...r, split5050: !!r.split5050}));
     const history = (await env.schulden.prepare("SELECT * FROM history ORDER BY ts").all()).results.map(h=>({
       id:h.id, ts:h.ts, actor:h.actor, action:h.action, entry:h.entry,
       before:h.before?JSON.parse(h.before):null, after:h.after?JSON.parse(h.after):null }));
     const users = (await env.schulden.prepare("SELECT name, is_admin FROM users").all()).results.map(u=>({name:u.name, is_admin:!!u.is_admin}));
     const srows = (await env.schulden.prepare("SELECT k,v FROM settings").all()).results;
     const settings = {}; for(const s of srows){ try{ settings[s.k]=JSON.parse(s.v); }catch{ settings[s.k]=s.v; } }
-    return json({ me:{name:me.name, is_admin:me.is_admin}, users, entries, history, settings,
+    return json({ me:{name:me.name, is_admin:me.is_admin}, users, entries, recurring, history, settings,
       categories: CATEGORIES, pfand_rates: PFAND_RATES, people: PEOPLE });
+  }
+
+  // ---- Wiederkehrende Kosten (Abos/Fixkosten) ----
+  if(p === "/recurring" && m === "POST"){
+    const r = await body();
+    if(!CATEGORIES.includes(r.category)) return json({ error: "Kategorie ungültig" }, 400);
+    if(!(r.description||"").trim()) return json({ error: "Beschreibung fehlt" }, 400);
+    if(!(typeof +r.amount==="number" && isFinite(+r.amount) && +r.amount>0)) return json({ error: "Betrag ungültig" }, 400);
+    const before = r.id ? await env.schulden.prepare("SELECT * FROM recurring WHERE id=?").bind(r.id).first() : null;
+    const rec = {
+      id: r.id || newId("f"),
+      category: r.category, description: r.description.trim(), amount: Math.round(+r.amount*100)/100,
+      split5050: r.split5050?1:0, payer: before ? before.payer : me.name,
+      day: r.day ? Math.min(28, Math.max(1, +r.day)) : 1,
+      active_from: /^\d{4}-\d{2}-\d{2}$/.test(r.active_from||"") ? r.active_from : new Date().toISOString().slice(0,10),
+      active_until: /^\d{4}-\d{2}-\d{2}$/.test(r.active_until||"") ? r.active_until : null,
+      created_by: before ? before.created_by : me.name
+    };
+    await env.schulden.prepare(
+      `INSERT INTO recurring (id,category,description,amount,split5050,payer,day,active_from,active_until,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET category=excluded.category, description=excluded.description,
+         amount=excluded.amount, split5050=excluded.split5050, day=excluded.day,
+         active_from=excluded.active_from, active_until=excluded.active_until`
+    ).bind(rec.id, rec.category, rec.description, rec.amount, rec.split5050, rec.payer, rec.day,
+      rec.active_from, rec.active_until, rec.created_by).run();
+    await materializeAll(env, {...rec, split5050: !!rec.split5050});
+    return json({ ok: true, id: rec.id });
+  }
+  if(p.startsWith("/recurring/") && m === "DELETE"){
+    const id = p.slice("/recurring/".length);
+    await env.schulden.prepare("DELETE FROM recurring WHERE id=?").bind(id).run();
+    return json({ ok: true });
   }
 
   // ---- Eintrag anlegen/ändern ----
