@@ -5,7 +5,9 @@ import {
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
-import AddPhotoAlternateRoundedIcon from "@mui/icons-material/AddPhotoAlternateRounded";
+import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
+import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
+import MicRoundedIcon from "@mui/icons-material/MicRounded";
 import { useAppState } from "../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -51,7 +53,10 @@ export default function Chat({ open, onClose }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [attach, setAttach] = useState(null); // base64 (ohne Präfix)
+  const [listening, setListening] = useState(false);
   const fileRef = useRef();
+  const camRef = useRef();
+  const recRef = useRef(null);
   const logRef = useRef();
   useEffect(() => { logRef.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [msgs, busy]);
 
@@ -110,6 +115,18 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
   const pickImage = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
     if (f) setAttach(await downscale(f));
+  };
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const toggleMic = () => {
+    if (!SR) { alert("Spracheingabe wird auf diesem Gerät nicht unterstützt."); return; }
+    if (recRef.current) { recRef.current.stop(); return; }
+    const rec = new SR();
+    rec.lang = "de-DE"; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.onresult = (e) => { const t = e.results[0][0].transcript; setInput((s) => (s ? s + " " : "") + t); };
+    rec.onend = () => { recRef.current = null; setListening(false); };
+    rec.onerror = () => { recRef.current = null; setListening(false); };
+    recRef.current = rec; setListening(true); rec.start();
   };
 
   const send = async () => {
@@ -207,15 +224,18 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
             </IconButton>
           </Box>
         )}
-        <Box sx={{ display: "flex", alignItems: "flex-end", gap: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={pickImage} />
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
-          <IconButton onClick={() => fileRef.current.click()} sx={{ flexShrink: 0 }}><AddPhotoAlternateRoundedIcon /></IconButton>
-          <TextField fullWidth size="small" placeholder="Nachricht oder Beleg-Foto…" value={input} multiline maxRows={4}
+          <IconButton size="small" title="Kamera" onClick={() => camRef.current.click()}><PhotoCameraRoundedIcon /></IconButton>
+          <IconButton size="small" title="Datei" onClick={() => fileRef.current.click()}><AttachFileRoundedIcon /></IconButton>
+          {SR && <IconButton size="small" title="Diktat" onClick={toggleMic} color={listening ? "error" : "default"}><MicRoundedIcon /></IconButton>}
+          <TextField fullWidth size="small" variant="outlined" placeholder={listening ? "Ich höre zu…" : "Nachricht…"} value={input} multiline maxRows={4}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4, bgcolor: "action.hover", px: 0.5 } }} />
+            sx={{ mx: 0.5, "& .MuiOutlinedInput-root": { borderRadius: 4, bgcolor: "action.hover", px: 0.5 } }} />
           <IconButton color="primary" onClick={send} disabled={busy || (!input.trim() && !attach)}
-            sx={{ bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground" } }}>
+            sx={{ flexShrink: 0, bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground" } }}>
             <ArrowUpwardRoundedIcon />
           </IconButton>
         </Box>

@@ -12,8 +12,6 @@ import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import ChatRoundedIcon from "@mui/icons-material/ChatRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
-import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
-import MicRoundedIcon from "@mui/icons-material/MicRounded";
 import LoopRoundedIcon from "@mui/icons-material/LoopRounded";
 
 import Overview from "../views/Overview.jsx";
@@ -24,7 +22,6 @@ import EntryDialog from "./EntryDialog.jsx";
 import RecurringDialog from "./RecurringDialog.jsx";
 import PayDialog from "./PayDialog.jsx";
 import Settings from "../features/Settings.jsx";
-import ScanDialog from "../features/ScanDialog.jsx";
 import Chat from "../features/Chat.jsx";
 
 const TITLES = { home: "Übersicht", entries: "Einträge", recurring: "Abos & Fixkosten", history: "Verlauf" };
@@ -35,7 +32,6 @@ export default function Shell({ state, mode, toggleMode }) {
   const [recDlg, setRecDlg] = useState(null);
   const [payOpen, setPayOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
   const openEntry = (e = {}) => setEntryDlg(e);
@@ -68,7 +64,6 @@ export default function Shell({ state, mode, toggleMode }) {
         sx={{ position: "fixed", bottom: 84, right: 20, zIndex: 1200 }}
       >
         <SpeedDialAction icon={<EditRoundedIcon />} tooltipTitle="Von Hand" tooltipOpen onClick={() => openEntry({})} />
-        <SpeedDialAction icon={<PhotoCameraRoundedIcon />} tooltipTitle="Beleg scannen" tooltipOpen onClick={() => setScanOpen(true)} />
         <SpeedDialAction icon={<LoopRoundedIcon />} tooltipTitle="Abo" tooltipOpen onClick={() => setRecDlg({})} />
       </SpeedDial>
 
@@ -86,7 +81,6 @@ export default function Shell({ state, mode, toggleMode }) {
       {recDlg !== null && <RecurringDialog rec={recDlg} onClose={() => setRecDlg(null)} />}
       <PayDialog open={payOpen} onClose={() => setPayOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <ScanDialog open={scanOpen} onClose={() => setScanOpen(false)} />
       <Chat open={chatOpen} onClose={() => setChatOpen(false)} />
     </Box>
   );
