@@ -28,7 +28,7 @@ function put(key, valueFile, isText) {
   const val = isText ? valueFile : fs.readFileSync(valueFile, "utf8");
   const tmp = require("os").tmpdir() + "/kv_" + key.replace(/[^a-z]/gi, "") + ".txt";
   fs.writeFileSync(tmp, val);
-  execSync(`npx --yes wrangler@latest kv key put --namespace-id ${KV} ${JSON.stringify(key)} --path ${JSON.stringify(tmp)}`, { stdio: "inherit" });
+  execSync(`npx --yes wrangler@latest kv key put --remote --namespace-id ${KV} ${JSON.stringify(key)} --path ${JSON.stringify(tmp)}`, { stdio: "inherit" });
   fs.unlinkSync(tmp);
 }
 (async () => {

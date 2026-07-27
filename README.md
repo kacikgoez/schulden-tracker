@@ -50,21 +50,22 @@ ledger.py         ←  CLI: balance / show / add / rm / json … (nutzt den DEK 
 - **Zwei Schreibwege, ein Format:** Browser (verschlüsselt lokal, committet per
   GitHub-API) und CLI (entschlüsselt lokal, committet per `git push`).
 
-## Hosting — alles auf Cloudflare (kostenlos, empfohlen)
+## Hosting — alles auf Cloudflare (kostenlos)
+
+**Live: https://schulden-kz.pages.dev** — öffnen, Passwort eingeben, fertig.
 
 Eine echte Web-App auf einer Domain: Cloudflare **Pages** (statische App) +
-**Functions** (`functions/api/…` = die Speicher-API) + **KV** (Datenspeicher).
+**Functions** (`functions/api/…` = Speicher-API) + **KV** (Datenspeicher).
 Free-Tier: 100k Anfragen/Tag → für zwei Personen dauerhaft **0 €/Monat**. Kein
-Token, kein CORS, kein zweites Repo — öffnen, Passwort, fertig.
+Token, kein CORS — Login läuft über das Passwort.
 
-**Deploy (einmalig):**
+**Erneut deployen** (nach App-Änderungen):
 ```bash
-npx wrangler login          # einmal im Terminal, Browser bestätigen
-cd ~/schulden-tracker
-./deploy.sh                 # legt KV an, säet Daten+Auth, deployt Pages
+cd ~/schulden-tracker && ./deploy.sh        # nur die App neu hochladen
+SEED=1 ./deploy.sh                           # zusätzlich Daten/Auth in KV neu setzen (Reset)
 ```
-`deploy.sh` gibt am Ende die `…pages.dev`-URL aus. Auf jedem Gerät nur diese URL
-öffnen und mit dem eigenen Passwort einloggen.
+`deploy.sh` staged automatisch nur die App-Dateien (nie `data/`) und deployt.
+KV-Namespace-ID und Projektname stehen im Skript.
 
 Sicherheit: Der Login-Nachweis ist `hex(SHA-256(DEK))`; der Server speichert nur
 dessen Hash. `keys` (PBKDF2-geschützt) ist ohne Auth lesbar, Ledger und Belege nur

@@ -5,4 +5,4 @@ pages_build_output_dir = "."
 # KV-Binding (die namespace-id trägt deploy.sh automatisch ein)
 [[kv_namespaces]]
 binding = "DATA"
-id = "REPLACE_WITH_KV_ID"
+id = "01b1366060b64ccf8cdb19b48d770070"
