@@ -121,10 +121,21 @@ Antworte knapp auf Deutsch und bestätige am Ende, was du konkret getan hast (mi
   const toggleMic = async () => {
     if (mediaRef.current) { mediaRef.current.stop(); return; }        // läuft → stoppen
     if (!aiConfigured(data)) { alert("Kein KI-Schlüssel — unter ⚙︎ eintragen."); return; }
+    if (!navigator.mediaDevices?.getUserMedia) { alert("Mikrofon-API nicht verfügbar (nur über HTTPS)."); return; }
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch { alert("Kein Mikrofon-Zugriff."); return; }
-    const rec = new MediaRecorder(stream);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      const n = e.name || "";
+      if (n === "NotAllowedError" || n === "SecurityError")
+        alert("Mikrofon blockiert. Bitte erlauben:\n1) im Browser (Schloss-Symbol in der Adressleiste)\n2) macOS → Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon → Firefox aktivieren (danach Firefox neu starten).");
+      else if (n === "NotFoundError" || n === "OverconstrainedError") alert("Kein Mikrofon gefunden.");
+      else alert("Mikrofon-Fehler: " + (n || e.message));
+      return;
+    }
+    let rec;
+    try { rec = new MediaRecorder(stream); }
+    catch (e) { stream.getTracks().forEach((t) => t.stop()); alert("Aufnahme wird nicht unterstützt: " + (e.name || e.message)); return; }
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = async () => {
