@@ -403,11 +403,8 @@ input[type=checkbox]{accent-color:var(--accent)}
           <label class="fld">Kategorie<select name="category" id="catsel"></select></label>
           <label class="fld">Datum<input type="date" name="date" required></label>
         </div>
-        <div class="fld">Bezahlt von
-          <div class="seg">
-            <input type="radio" name="payer" id="payK" value="Kawa" checked><label for="payK">Kawa</label>
-            <input type="radio" name="payer" id="payZ" value="Zeynel"><label for="payZ">Zeynel</label>
-          </div>
+        <div class="fld">Wer schuldet?
+          <div class="note" id="payerinfo" style="background:var(--fill);border-radius:12px;padding:12px 13px;font-weight:600;color:var(--ink)"></div>
         </div>
         <label class="toggle">
           <div><div style="font-weight:700;color:var(--ink)">50 : 50 teilen</div>
@@ -1235,7 +1232,7 @@ function render(){
 const AUTO_SPLIT = new Set(["Benzin","Autokosten","Reparaturkosten","Werkstatt/TÜV","Miete/Wohnen","Strom/Nebenkosten"]);
 function fillForm(e){
   const f = $("addform");
-  f.date.value = e.date; f.category.value = e.category; f.payer.value = e.payer;
+  f.date.value = e.date; f.category.value = e.category;
   f.description.value = e.description; f.qty.value = e.qty||"";
   f.unit_price.value = e.unit_price; f.split5050.checked = !!e.split5050;
   f.pfand_qty.value = e.pfand_qty||""; if(e.pfand_type) f.pfand_type.value = e.pfand_type;
@@ -1264,6 +1261,12 @@ function syncForm(){
   const f = $("addform"), drink = f.category.value === "Getränke";
   $("pfandsec").style.display = drink ? "" : "none";
   if(!drink) f.pfand_qty.value = "";
+  // Zahler ist immer der angemeldete Nutzer → der/die andere schuldet
+  const other = (USERS.map(u=>u.name).find(n=>n!==actor())) || (actor()==="Kawa"?"Zeynel":"Kawa");
+  let effPayer = actor();
+  if(EDITING){ const cur = DATA.entries.find(x=>x.id===EDITING); if(cur) effPayer = cur.payer; }
+  const debtor = effPayer===actor() ? other : actor();
+  const pi = $("payerinfo"); if(pi) pi.textContent = `${debtor} schuldet` + (effPayer!==actor() ? ` (von ${esc(effPayer)} erfasst)` : "");
   const price = parseFloat(f.unit_price.value), qty = parseInt(f.qty.value)||1;
   const t = $("f2total");
   if(isFinite(price)){
@@ -1286,7 +1289,7 @@ $("addform").addEventListener("submit", async ev => {
   const f = ev.target;
   const e = {
     date: f.date.value, category: f.category.value, description: f.description.value.trim(),
-    payer: f.payer.value, unit_price: +f.unit_price.value, split5050: f.split5050.checked
+    unit_price: +f.unit_price.value, split5050: f.split5050.checked
   };
   if(EDITING) e.id = EDITING;
   if(f.qty.value) e.qty = +f.qty.value;

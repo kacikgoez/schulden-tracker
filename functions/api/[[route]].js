@@ -138,15 +138,21 @@ async function handle(context){
   // ---- Eintrag anlegen/ändern ----
   if(p === "/entry" && m === "POST"){
     const e = await body();
+    const before = e.id ? await getEntry(env, e.id) : null;
+    // Regel: jeder erfasst, was der/die ANDERE schuldet → Zahler = angemeldeter Nutzer.
+    // Beim Bearbeiten bleibt der ursprüngliche Zahler erhalten. Die automatische
+    // KI-Nutzung ist die einzige Ausnahme (Kawa streckt vor).
+    let payer;
+    if(e.category === "KI-Nutzung") payer = e.payer;
+    else payer = before ? before.payer : me.name;
     const clean = {
       id: e.id || newId("e"), date: e.date, category: e.category, description: (e.description||"").trim(),
-      payer: e.payer, qty: e.qty?+e.qty:null, unit_price: +e.unit_price, split5050: !!e.split5050,
+      payer, qty: e.qty?+e.qty:null, unit_price: +e.unit_price, split5050: !!e.split5050,
       pfand_qty: e.pfand_qty?+e.pfand_qty:null, pfand_type: e.pfand_qty?(e.pfand_type||"Einweg"):null,
       mt: nowIso()
     };
     const err = validateEntry(clean);
     if(err) return json({ error: err }, 400);
-    const before = e.id ? await getEntry(env, e.id) : null;
     if(before){ // Metadaten (Beleg/Zahlung) erhalten
       for(const k of ["receipt","receipt_note","pay_status","pay_method","claimed_by","claimed_ts","confirmed_by","confirmed_ts","created_by"])
         if(before[k]!==undefined) clean[k]=before[k];
